@@ -1,4 +1,4 @@
-package com.example.fukat_movies
+package com.example.fukat_MSA
 
 import io.flutter.embedding.android.FlutterActivity
 

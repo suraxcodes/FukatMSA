@@ -1,6 +1,6 @@
 {
-    "name": "fukat_movies",
-    "short_name": "fukat_movies",
+    "name": "fukat_MSA",
+    "short_name": "fukat_MSA",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

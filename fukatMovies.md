@@ -1,4 +1,4 @@
-# FukatMovies - Provider First Development Update
+# fukatMSA - Provider First Development Update
 
 ## Priority Shift: Provider Stability Before UI
 

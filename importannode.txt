@@ -9,3 +9,6 @@ VidLink Pro Script Utility: github.com/4texas4/movie-scraper(A specialized serve
 ⛩️ High-Speed Anime Streaming LayerAmvstrm High-Performance Engine: github.com/amvstrm/api(A specialized engine optimized for ultra-fast, modern asynchronous execution runtimes to scrape high-bandwidth Japanese streaming mirrors.)
 
 The Movie Database (TMDB) API:-developer.themoviedb.org
+
+
+need to add feature that check which internet is coonect mobile wifi ethernet or wifi and works basedon that 

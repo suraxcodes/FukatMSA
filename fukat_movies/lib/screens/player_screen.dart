@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
+import '../services/ad_block_service.dart';
+import '../widgets/episode_picker_sheet.dart';
+import '../services/continue_watching_service.dart';
 
 class PlayerScreen extends StatefulWidget {
   final String tmdbId;
@@ -20,6 +23,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? currentImdbId;
   bool isInitializing = true;
   String currentUrl = "";
+  String currentSeason = "1";
+  String currentEpisode = "1";
 
   @override
   void initState() {
@@ -68,8 +73,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     var activeProvider = providersList[currentProviderIndex];
-    // Default to Season 1 Episode 1 for TV Shows for now
-    String requestUrl = _buildPlaybackUrl(activeProvider, widget.tmdbId, currentImdbId!, "1", "1", widget.isMovie);
+    String requestUrl = _buildPlaybackUrl(activeProvider, widget.tmdbId, currentImdbId!, currentSeason, currentEpisode, widget.isMovie);
     
     setState(() {
       currentUrl = requestUrl;
@@ -77,6 +81,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (webViewController != null) {
       webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(requestUrl)));
+      ContinueWatchingService.saveItem(
+        tmdbId: widget.tmdbId,
+        title: widget.title,
+        posterPath: null, // Poster path isn't strictly needed for resume play if we design it to work without it
+        isMovie: widget.isMovie,
+        lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
+        lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
+      );
     }
   }
 
@@ -86,6 +98,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
       currentProviderIndex++;
     });
     _startPlaybackChain();
+  }
+
+  void _showEpisodePicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => EpisodePickerSheet(
+        currentSeason: currentSeason,
+        currentEpisode: currentEpisode,
+        onPlayPressed: (season, episode) {
+          setState(() {
+            currentSeason = season;
+            currentEpisode = episode;
+            currentProviderIndex = 0; // Reset failover loop
+          });
+          _startPlaybackChain();
+        },
+      ),
+    );
   }
 
   @override
@@ -103,6 +138,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         title: Text(widget.title, style: TextStyle(color: Colors.white, fontSize: 16)),
         backgroundColor: Colors.black,
         iconTheme: IconThemeData(color: Colors.white),
+        actions: [
+          if (!widget.isMovie)
+            IconButton(
+              icon: Icon(Icons.list),
+              tooltip: "Episodes",
+              onPressed: _showEpisodePicker,
+            )
+        ],
       ),
       body: currentProviderIndex >= RemoteConfigService.activeProviders.length
           ? Center(child: Text("No streams available.", style: TextStyle(color: Colors.white)))
@@ -111,12 +154,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
               initialSettings: InAppWebViewSettings(
                 mediaPlaybackRequiresUserGesture: false,
                 javaScriptEnabled: true,
-                // Basic ad-blocking sandbox implementation
                 supportZoom: false,
                 disableContextMenu: true,
+                useShouldOverrideUrlLoading: true, // Need this for URL intercept
               ),
               onWebViewCreated: (controller) {
                 webViewController = controller;
+              },
+              shouldOverrideUrlLoading: (controller, navigationAction) async {
+                var url = navigationAction.request.url?.toString() ?? '';
+                var isForMainFrame = navigationAction.isForMainFrame ?? false;
+                
+                if (isForMainFrame) {
+                  for (var domain in AdBlockService.adBlocklistDomains) {
+                    if (url.contains(domain)) {
+                      print('Blocked navigation to ad domain: \$domain');
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                  }
+                }
+                return NavigationActionPolicy.ALLOW;
+              },
+              onLoadStop: (controller, url) async {
+                await controller.evaluateJavascript(source: AdBlockService.sandboxJsInjection);
               },
               onReceivedError: (controller, request, error) {
                 if (request.isForMainFrame ?? false) {

@@ -34,7 +34,7 @@ For scrapers built on Next.js or those providing a `vercel.json` file:
    - Environment Variables: Add any required API keys or secrets documented by the scraper template.
 5. Click **Deploy**.
 6. Once deployed, Vercel will provide you with a `.vercel.app` URL. Copy this URL.
-7. Return to your `fukatMovies/provider-test/verify-providers.js` script and update the target node URLs with your new Vercel endpoint.
+7. Return to your `fukatMSA/provider-test/verify-providers.js` script and update the target node URLs with your new Vercel endpoint.
 
 ## 3. Deploying Express / Node Engines (Consumet, VidLink, etc.)
 For traditional Node.js/Express scraper APIs that need a persistent runtime:

@@ -5,6 +5,7 @@ class RemoteConfigService {
   // Replace this with your actual Pastebin/Gist Raw URL containing remote_config.json
   static const String _configUrl = "https://raw.githubusercontent.com/suraxcodes/FukatMSA/main/remote_config.json";
 
+
   static List<dynamic> _activeProviders = [];
 
   static List<dynamic> get activeProviders => _activeProviders;
