@@ -1,0 +1,11 @@
+Mainstream Movies & TV Series EnginesConsumet Master API: github.com/ByteMuseum/api.consumet.org(The foundational open-source indexing bundle. Look at the src/providers directory inside this repository to examine how individual site scraping modules are constructed.)
+
+CinePro Streaming Core: github.com/cinepro-org/core(A modular, active TypeScript-based engine designed around multi-source media resolution frameworks.)
+
+VidLink Pro Script Utility: github.com/4texas4/movie-scraper(A specialized serverless implementation built to interact directly with backend video hosts like Vidplay.)
+
+📺 Dedicated Embed Interface (Iframe Reference)EmbedIn Interface: github.com/vjdev1212/embedin(An open-source frontend implementation that serves as an excellent blueprint for cleanly embedding VidSrc players.)  
+
+⛩️ High-Speed Anime Streaming LayerAmvstrm High-Performance Engine: github.com/amvstrm/api(A specialized engine optimized for ultra-fast, modern asynchronous execution runtimes to scrape high-bandwidth Japanese streaming mirrors.)
+
+The Movie Database (TMDB) API:-developer.themoviedb.org

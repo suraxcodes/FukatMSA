@@ -1,0 +1,29 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'services/remote_config_service.dart';
+import 'screens/home_screen.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Load environment variables securely
+  await dotenv.load(fileName: ".env");
+  // Fetch dynamic providers before app starts
+  await RemoteConfigService.initializeConfig();
+  runApp(FukatMoviesApp());
+}
+
+class FukatMoviesApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Fukat Movies',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: Colors.redAccent,
+        scaffoldBackgroundColor: Color(0xFF141414), // Netflix dark
+      ),
+      home: HomeScreen(),
+    );
+  }
+}
