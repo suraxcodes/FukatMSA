@@ -4,7 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/remote_config_service.dart';
 import 'screens/home_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Load environment variables securely
   await dotenv.load(fileName: "assets/.env");
@@ -16,10 +16,11 @@ void main() async {
   
   // Fetch dynamic providers before app starts
   await RemoteConfigService.initializeConfig();
-  runApp(FukatMoviesApp());
+  runApp(const MyApp());
 }
 
-class FukatMoviesApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -34,3 +35,4 @@ class FukatMoviesApp extends StatelessWidget {
     );
   }
 }
+

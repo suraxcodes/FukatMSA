@@ -9,52 +9,77 @@ class TmdbService {
   // Base URL for TMDB API
   static const String _baseUrl = 'https://api.themoviedb.org/3';
 
-  // Private helper to fetch and decode JSON responses with retry & timeout
-  static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
+static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
+    // Prefer v4 token, else fallback to v3 key
+    final token = dotenv.env['TMDB_API_TOKEN'];
     final apiKey = dotenv.env['TMDB_API_KEY'];
-    if (apiKey == null) {
-      throw Exception('TMDB_API_KEY not set in .env');
+
+    // Validate credentials: ensure we have either a token or a key
+    if (token == null && (apiKey == null || apiKey.isEmpty)) {
+      throw Exception('No TMDB credentials set in .env');
     }
+
+    // Removed hard‑coded key check – credentials are loaded from .env
+
+    // Build URI (add api_key only when using v3 key)
     final rawUri = Uri.parse('$_baseUrl$path');
-    final uri = rawUri.replace(queryParameters: {
-      ...rawUri.queryParameters,
-      'api_key': apiKey,
-    });
+    final uri = token == null
+        ? rawUri.replace(queryParameters: {
+            ...rawUri.queryParameters,
+            'api_key': apiKey!,
+          })
+        : rawUri; // token goes in Authorization header
+
     if (kDebugMode) {
       print('TMDB request URI: $uri');
+      if (token != null) print('Using TMDB v4 token');
     }
 
     const int maxAttempts = 3;
     int attempt = 0;
     while (true) {
       try {
-        final response = await http
-            .get(uri)
-            .timeout(const Duration(seconds: 12), onTimeout: () {
+        final response = await http.get(
+          uri,
+          headers: token != null
+              ? {
+                  'Authorization': 'Bearer $token',
+                  'Content-Type': 'application/json;charset=utf-8',
+                }
+              : null,
+        ).timeout(const Duration(seconds: 12), onTimeout: () {
           throw TimeoutException('TMDB request timed out');
         });
+
         if (response.statusCode != 200) {
-          throw Exception('Failed to load TMDB data: ${response.statusCode}');
+          if (kDebugMode) {
+            print('❌ TMDB Server Rejection – status ${response.statusCode}: ${response.body}');
+          }
+          throw Exception('Failed TMDB request (${response.statusCode})');
         }
         return json.decode(response.body) as Map<String, dynamic>;
-      } on SocketException catch (_) {
+      } on SocketException catch (se) {
         if (kDebugMode) {
-          print('TMDB network error: No internet connection (attempt ${attempt + 1})');
+          print('⚠️ TMDB Socket Exception (Attempt ${attempt + 1}): ${se.message}');
+          print('Target URI was: $uri');
         }
-        if (attempt >= maxAttempts - 1) return {};
+        if (attempt >= maxAttempts - 1) rethrow;
       } on TimeoutException catch (_) {
         if (kDebugMode) {
-          print('TMDB request timed out (attempt ${attempt + 1})');
+          print('⚠️ TMDB request timed out (attempt ${attempt + 1})');
         }
-        if (attempt >= maxAttempts - 1) return {};
-      } catch (e) {
+        if (attempt >= maxAttempts - 1) rethrow;
+      } catch (e, stack) {
         if (kDebugMode) {
-          print('TMDB unexpected error: $e');
+          print('❌ Actual Unhandled TMDB Exception: $e');
+          print('Stack trace: $stack');
         }
-        return {};
+        rethrow;
       }
+
       attempt++;
-      await Future.delayed(Duration(seconds: attempt * 2 + 2));
+      // Incremental backoff delay: 1s, 3s, etc.
+      await Future.delayed(Duration(seconds: attempt * 2 + 1));
     }
   }
 

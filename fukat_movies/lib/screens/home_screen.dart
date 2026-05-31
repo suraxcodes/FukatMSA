@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/tmdb_service.dart';
 import 'player_screen.dart';
-import '../widgets/hero_banner.dart';
 import '../widgets/watchlist_icon_button.dart';
 import '../services/continue_watching_service.dart';
 import 'search_screen.dart';
@@ -25,25 +24,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchData() async {
-    final hasInternet = await TmdbService.hasInternetConnection();
-    if (!hasInternet) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No internet connection. Please check your network.')),
-        );
-        setState(() => _isLoading = false);
+    try {
+      final hasInternet = await TmdbService.hasInternetConnection();
+      if (!hasInternet) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No internet connection. Please check your network.')),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
       }
-      return;
+
+      // 1. Fetch movies first
+      final movies = await TmdbService.getTrendingMovies();
+      setState(() {
+        _trendingMovies = movies;
+      });
+
+      // 2. Tiny gap to avoid TMDB firewall triggers
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 3. Fetch TV shows next
+      final tvShows = await TmdbService.getTrendingTvShows();
+      setState(() {
+        _trendingTv = tvShows;
+      });
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 4. Fetch Anime
+      final anime = await TmdbService.getTrendingAnime();
+      setState(() {
+        _trendingAnime = anime;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("UI Layer caught fetch error: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
-    final movies = await TmdbService.getTrendingMovies();
-    final tvShows = await TmdbService.getTrendingTvShows();
-    final anime = await TmdbService.getTrendingAnime();
-    setState(() {
-      _trendingMovies = movies;
-      _trendingTv = tvShows;
-      _trendingAnime = anime;
-      _isLoading = false;
-    });
   }
 
   Widget _buildMediaRow(String title, List<dynamic> items, bool isMovie) {
@@ -92,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(10),
                             child: posterPath != null
                                 ? Image.network(
-                                    'https://image.tmdb.org/t/p/w500$posterPath',
+                                    'https://image.tmdb.org/t/p/w500${posterPath}',
                                     height: 200,
                                     width: 150,
                                     fit: BoxFit.cover,
@@ -253,9 +272,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildContinueWatchingRow(),
-                  if (_trendingMovies.isNotEmpty)
-                    HeroBanner(item: _trendingMovies[0]),
-                  _buildMediaRow("Trending Movies", _trendingMovies, true),
+                  if (_trendingMovies.isNotEmpty) 
+                    _buildMediaRow("Trending Movies", _trendingMovies, true),
                   _buildMediaRow("Trending TV Shows", _trendingTv, false),
                   _buildMediaRow("Trending Anime", _trendingAnime, true),
                 ],
