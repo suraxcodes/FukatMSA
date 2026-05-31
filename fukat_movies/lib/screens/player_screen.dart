@@ -28,6 +28,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String currentEpisode = "1";
   bool _isPlaying = false;
   String _bannerUrl = 'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
+  // New state for dynamic season/episode lists
+  List<String> _seasons = [];
+  Map<String, List<String>> _episodesPerSeason = {};
 
   @override
   void initState() {
@@ -39,11 +42,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Fetch IMDB ID since some providers require it
     final imdbId = await TmdbService.getImdbId(int.parse(widget.tmdbId), widget.isMovie);
     
-    // Attempt to get banner/backdrop
+    // Attempt to get banner/backdrop and season data if series
     if (!widget.isMovie) {
       final seriesData = await TmdbService.getSeriesDetails(int.parse(widget.tmdbId));
       if (seriesData != null && seriesData['backdrop_path'] != null) {
         _bannerUrl = 'https://image.tmdb.org/t/p/w1280${seriesData['backdrop_path']}';
+      }
+      // Load seasons and episodes
+      if (seriesData != null && seriesData['seasons'] != null) {
+        final seasonList = seriesData['seasons'] as List<dynamic>;
+        List<String> seasons = [];
+        Map<String, List<String>> episodesMap = {};
+        for (var season in seasonList) {
+          final seasonNumber = season['season_number'].toString();
+          seasons.add(seasonNumber);
+          final episodes = await TmdbService.getSeasonEpisodes(int.parse(widget.tmdbId), int.parse(seasonNumber));
+          final epNumbers = episodes.map((e) => e['episode_number'].toString()).toList();
+          episodesMap[seasonNumber] = epNumbers;
+        }
+        setState(() {
+          _seasons = seasons;
+          _episodesPerSeason = episodesMap;
+          if (_seasons.isNotEmpty) {
+            currentSeason = _seasons.first;
+          }
+        });
       }
     } else {
       // Movie banner logic could be added here
@@ -263,11 +286,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
         // Main video player area (takes remaining vertical space)
-        Expanded(
+        Flexible(
           child: _buildVideoPlayerArea(),
         ),
-        // Bottom control bar
-        _buildControlBar(),
       ],
     );
   }
@@ -302,6 +323,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: EpisodeSidePanel(
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
+                        seasons: _seasons,
+                        episodesPerSeason: _episodesPerSeason,
                         onEpisodeSelected: (season, episode) {
                           setState(() {
                             currentSeason = season;
@@ -314,16 +337,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                   // Right Side: Player Section
-                  Expanded(
-                    child: _buildPlayerSection(),
-                  ),
+                  SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.4,
+                      child: _buildPlayerSection(),
+                    ),
                 ],
               )
             : Column(
                 children: [
                   // Top Side: Player Section
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    width: double.infinity,
                     child: _buildPlayerSection(),
                   ),
                   // Bottom Side: Episode Picker (if not a movie)
@@ -332,12 +357,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: EpisodeSidePanel(
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
+                        seasons: _seasons,
+                        episodesPerSeason: _episodesPerSeason,
                         onEpisodeSelected: (season, episode) {
                           setState(() {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _isPlaying = false; // Reset to banner state on episode change
+                            _isPlaying = false;
                             _preparePlaybackUrl();
                           });
                         },
@@ -345,7 +372,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                 ],
               ),
-      ),
-    );
+            ),
+          );
+        }
   }
-}
+

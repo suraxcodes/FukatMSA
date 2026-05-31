@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 
 /// Side panel (or bottom panel on mobile) UI for selecting season & episode.
-///
-/// Features:
-///  • Top row with "Sub & Dub" placeholder, Season selector, and a "Find num!" button.
-///  • Grid of episodes for the selected season.
+/// It receives the list of seasons and episodes per season generated from TMDB.
 class EpisodeSidePanel extends StatefulWidget {
   final String currentSeason;
   final String currentEpisode;
   final void Function(String season, String episode) onEpisodeSelected;
+  final List<String> seasons;
+  final Map<String, List<String>> episodesPerSeason;
 
   const EpisodeSidePanel({
     Key? key,
     required this.currentSeason,
     required this.currentEpisode,
     required this.onEpisodeSelected,
+    required this.seasons,
+    required this.episodesPerSeason,
   }) : super(key: key);
 
   @override
@@ -23,12 +24,6 @@ class EpisodeSidePanel extends StatefulWidget {
 
 class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
   late String _selectedSeason;
-  
-  // Dummy data – replace with real TMDB data later.
-  final List<String> _seasons = List.generate(5, (i) => '${i + 1}');
-  final Map<String, List<String>> _episodesPerSeason = {
-    for (var i = 1; i <= 5; i++) '$i': List.generate(12, (j) => '${j + 1}'),
-  };
 
   @override
   void initState() {
@@ -37,12 +32,12 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
   }
 
   List<String> get _currentEpisodes =>
-      _episodesPerSeason[_selectedSeason] ?? ['1'];
+      widget.episodesPerSeason[_selectedSeason] ?? [];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1A1A1A), // Dark grey background matching the image
+      color: const Color(0xFF1A1A1A), // Dark background matching UI theme
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -50,30 +45,48 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
           // Top controls row
           Row(
             children: [
+              // Placeholder Sub & Dub dropdown
               Expanded(
                 flex: 2,
                 child: _buildDarkDropdown(
                   value: 'Sub & Dub',
-                  items: ['Sub & Dub', 'Sub', 'Dub'],
+                  items: const ['Sub & Dub', 'Sub', 'Dub'],
                   onChanged: (val) {},
                 ),
               ),
               const SizedBox(width: 8),
+              // Season selector (displayed as “Season X”)
               Expanded(
                 flex: 2,
-                child: _buildDarkDropdown(
-                  value: _selectedSeason,
-                  items: _seasons,
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() {
-                        _selectedSeason = val;
-                      });
-                    }
-                  },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: widget.seasons.contains(_selectedSeason) ? _selectedSeason : (widget.seasons.isNotEmpty ? widget.seasons.first : null),
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF2A2A2A),
+                      icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      items: widget.seasons
+                          .map((e) => DropdownMenuItem(value: e, child: Text('Season $e')))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedSeason = val;
+                          });
+                        }
+                      },
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
+              // Find num button (placeholder)
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
@@ -102,12 +115,9 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
               ),
               itemBuilder: (ctx, idx) {
                 final ep = _currentEpisodes[idx];
-                // Check if this episode is currently playing
                 final bool isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
                 return GestureDetector(
-                  onTap: () {
-                    widget.onEpisodeSelected(_selectedSeason, ep);
-                  },
+                  onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
                   child: Container(
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
@@ -144,7 +154,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: items.contains(value) ? value : items.first,
+          value: items.contains(value) ? value : (items.isNotEmpty ? items.first : null),
           isExpanded: true,
           dropdownColor: const Color(0xFF2A2A2A),
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
