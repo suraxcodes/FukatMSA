@@ -2,15 +2,26 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class WatchlistService {
-  static final _box = Hive.box('watchlistBox');
+  // 🚀 Helper to lazily obtain the watchlist Hive box
+  static Future<Box> _getBox() async {
+    if (Hive.isBoxOpen('watchlistBox')) {
+      return Hive.box('watchlistBox');
+    }
+    return await Hive.openBox('watchlistBox');
+  }
 
-  static ValueListenable<Box> get listenable => _box.listenable();
+  static Future<void> ensureInitialized() async {
+    await _getBox();
+  }
+
+  static ValueListenable<Box<dynamic>> get listenable => Hive.box('watchlistBox').listenable();
 
   static Future<void> toggleItem(String tmdbId, String title, String? posterPath, bool isMovie) async {
-    if (_box.containsKey(tmdbId)) {
-      await _box.delete(tmdbId);
+    final box = await _getBox();
+    if (box.containsKey(tmdbId)) {
+      await box.delete(tmdbId);
     } else {
-      await _box.put(tmdbId, {
+      await box.put(tmdbId, {
         'tmdbId': tmdbId,
         'title': title,
         'posterPath': posterPath,
@@ -20,12 +31,17 @@ class WatchlistService {
     }
   }
 
-  static bool isSaved(String tmdbId) {
-    return _box.containsKey(tmdbId);
+  static Future<bool> isSaved(String tmdbId) async {
+    final box = await _getBox();
+    return box.containsKey(tmdbId);
   }
 
-  static List<Map<String, dynamic>> getAllItems() {
-    return _box.values.map((item) => Map<String, dynamic>.from(item)).toList()
+  static Future<List<Map<String, dynamic>>> getAllItems() async {
+    final box = await _getBox();
+    final items = box.values
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList()
       ..sort((a, b) => DateTime.parse(b['savedAt']).compareTo(DateTime.parse(a['savedAt'])));
+    return items;
   }
 }

@@ -14,83 +14,94 @@ class WatchlistScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: ValueListenableBuilder(
-        valueListenable: WatchlistService.listenable,
-        builder: (context, box, _) {
-          final items = WatchlistService.getAllItems();
-
-          if (items.isEmpty) {
-            return Center(
-              child: Text(
-                'Your watchlist is empty.',
-                style: TextStyle(color: Colors.white54, fontSize: 18),
-              ),
-            );
+      body: FutureBuilder(
+        future: WatchlistService.ensureInitialized(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator(color: Colors.red));
           }
+          return ValueListenableBuilder(
+            valueListenable: WatchlistService.listenable,
+            builder: (context, box, _) {
+              final items = (box.values
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+          ..sort((a, b) => DateTime.parse(b['savedAt']).compareTo(DateTime.parse(a['savedAt']))));
 
-          return GridView.builder(
-            padding: EdgeInsets.all(16),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.65,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final posterPath = item['posterPath'];
-              final title = item['title'];
-              final tmdbId = item['tmdbId'].toString();
-              final isMovie = item['isMovie'];
+              if (items.isEmpty) {
+                return Center(
+                  child: Text(
+                    'Your watchlist is empty.',
+                    style: TextStyle(color: Colors.white54, fontSize: 18),
+                  ),
+                );
+              }
 
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PlayerScreen(
-                        tmdbId: tmdbId,
-                        isMovie: isMovie,
-                        title: title,
-                      ),
+              return GridView.builder(
+                padding: EdgeInsets.all(16),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 0.65,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final posterPath = item['posterPath'];
+                  final title = item['title'];
+                  final tmdbId = item['tmdbId'].toString();
+                  final isMovie = item['isMovie'];
+
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PlayerScreen(
+                            tmdbId: tmdbId,
+                            isMovie: isMovie,
+                            title: title,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: posterPath != null
+                              ? Image.network(
+                                  'https://image.tmdb.org/t/p/w500$posterPath',
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                )
+                              : Container(
+                                  color: Colors.grey[800],
+                                  child: Center(
+                                    child: Text(
+                                      title,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                  ),
+                                ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: WatchlistIconButton(
+                            tmdbId: tmdbId,
+                            title: title,
+                            posterPath: posterPath,
+                            isMovie: isMovie,
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: posterPath != null
-                          ? Image.network(
-                              'https://image.tmdb.org/t/p/w500\$posterPath',
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                            )
-                          : Container(
-                              color: Colors.grey[800],
-                              child: Center(
-                                child: Text(
-                                  title,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                              ),
-                            ),
-                    ),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: WatchlistIconButton(
-                        tmdbId: tmdbId,
-                        title: title,
-                        posterPath: posterPath,
-                        isMovie: isMovie,
-                      ),
-                    ),
-                  ],
-                ),
               );
             },
           );

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'supabase_sync_service.dart';
 
 class ContinueWatchingService {
   static final _box = Hive.box('continueWatchingBox');
@@ -23,6 +24,9 @@ class ContinueWatchingService {
       'lastEpisode': lastEpisode,
       'savedAt': DateTime.now().toIso8601String(),
     });
+    
+    // Trigger sync in background
+    SupabaseSyncService.syncContinueWatching();
   }
 
   static Future<void> removeItem(String tmdbId) async {

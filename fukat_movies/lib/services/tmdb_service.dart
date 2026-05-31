@@ -6,79 +6,97 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class TmdbService {
-  // Base URL for TMDB API
   static const String _baseUrl = 'https://api.themoviedb.org/3';
 
-static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
-    // Prefer v4 token, else fallback to v3 key
+  // Background Isolate JSON parser to eliminate UI frame jank
+  static Map<String, dynamic> _parseJson(String responseBody) {
+    return json.decode(responseBody) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
     final token = dotenv.env['TMDB_API_TOKEN'];
     final apiKey = dotenv.env['TMDB_API_KEY'];
 
-    // Validate credentials: ensure we have either a token or a key
-    if (token == null && (apiKey == null || apiKey.isEmpty)) {
-      throw Exception('No TMDB credentials set in .env');
+    if ((token == null || token.isEmpty) && (apiKey == null || apiKey.isEmpty)) {
+      throw Exception('Missing configuration values: Configure TMDB keys in your .env file.');
     }
 
-    // Removed hard‑coded key check – credentials are loaded from .env
+    // 🚀 THE CRITICAL FIX: Extract inline parameters cleanly to prevent broken URI formatting
+    final cleanPath = path.contains('?') ? path.split('?')[0] : path;
+    final inlineQueryString = path.contains('?') ? path.split('?')[1] : '';
+    
+    // Parse the base path safely
+    Uri uri = Uri.parse('$_baseUrl$cleanPath');
+    
+    // Extract any existing query parameters from the path string
+    Map<String, String> mergedQueryParameters = Map.from(uri.queryParameters);
+    if (inlineQueryString.isNotEmpty) {
+      final parsedQuery = Uri.splitQueryString(inlineQueryString);
+      mergedQueryParameters.addAll(parsedQuery);
+    }
 
-    // Build URI (add api_key only when using v3 key)
-    final rawUri = Uri.parse('$_baseUrl$path');
-    final uri = token == null
-        ? rawUri.replace(queryParameters: {
-            ...rawUri.queryParameters,
-            'api_key': apiKey!,
-          })
-        : rawUri; // token goes in Authorization header
+    // Assign fallback v3 API key ONLY if the primary v4 Bearer Token is missing
+    final bool useV4Token = token != null && token.isNotEmpty;
+    if (!useV4Token && apiKey != null) {
+      mergedQueryParameters['api_key'] = apiKey;
+    }
+
+    // Reconstruct the clean, unified Uri structure
+    uri = uri.replace(queryParameters: mergedQueryParameters.isNotEmpty ? mergedQueryParameters : null);
 
     if (kDebugMode) {
       print('TMDB request URI: $uri');
-      if (token != null) print('Using TMDB v4 token');
+      print(useV4Token ? 'Authentication Strategy: TMDB v4 Bearer Token' : 'Authentication Strategy: TMDB v3 URL Parameter');
+    }
+
+    // Build Request Headers
+    final Map<String, String> headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json;charset=utf-8',
+    };
+    if (useV4Token) {
+      headers['Authorization'] = 'Bearer $token';
     }
 
     const int maxAttempts = 3;
     int attempt = 0;
+
     while (true) {
       try {
-        final response = await http.get(
-          uri,
-          headers: token != null
-              ? {
-                  'Authorization': 'Bearer $token',
-                  'Content-Type': 'application/json;charset=utf-8',
-                }
-              : null,
-        ).timeout(const Duration(seconds: 12), onTimeout: () {
-          throw TimeoutException('TMDB request timed out');
-        });
+        final response = await http.get(uri, headers: headers).timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => throw TimeoutException('Network latency threshold exceeded.'),
+        );
 
         if (response.statusCode != 200) {
           if (kDebugMode) {
-            print('❌ TMDB Server Rejection – status ${response.statusCode}: ${response.body}');
+            print('❌ TMDB Server Rejection [Status ${response.statusCode}]: ${response.body}');
           }
           throw Exception('Failed TMDB request (${response.statusCode})');
         }
-        return json.decode(response.body) as Map<String, dynamic>;
+
+        // Returns clean decoded objects parsed inside a background Isolate worker thread
+        return await compute(_parseJson, response.body);
+
       } on SocketException catch (se) {
         if (kDebugMode) {
           print('⚠️ TMDB Socket Exception (Attempt ${attempt + 1}): ${se.message}');
-          print('Target URI was: $uri');
         }
         if (attempt >= maxAttempts - 1) rethrow;
       } on TimeoutException catch (_) {
         if (kDebugMode) {
-          print('⚠️ TMDB request timed out (attempt ${attempt + 1})');
+          print('⚠️ TMDB request timed out (Attempt ${attempt + 1})');
         }
         if (attempt >= maxAttempts - 1) rethrow;
       } catch (e, stack) {
         if (kDebugMode) {
-          print('❌ Actual Unhandled TMDB Exception: $e');
-          print('Stack trace: $stack');
+          print('❌ Unhandled Exception Context: $e\nStack: $stack');
         }
         rethrow;
       }
 
       attempt++;
-      // Incremental backoff delay: 1s, 3s, etc.
+      // Exponential backoff strategy to reduce server hammer penalties
       await Future.delayed(Duration(seconds: attempt * 2 + 1));
     }
   }
@@ -97,8 +115,7 @@ static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
   // Get TV series details
   static Future<Map<String, dynamic>?> getSeriesDetails(int tmdbId) async {
     try {
-      final data = await _fetchAndDecode('/tv/$tmdbId');
-      return data;
+      return await _fetchAndDecode('/tv/$tmdbId');
     } catch (_) {
       return null;
     }
@@ -125,10 +142,9 @@ static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
     final data = await _fetchAndDecode('/trending/tv/week');
     return (data['results'] as List<dynamic>?) ?? [];
   }
+
   // Get Trending Anime (weekly)
   static Future<List<dynamic>> getTrendingAnime() async {
-    // TMDB does not have a direct anime trending endpoint.
-    // Use discover TV with the Animation genre (id 16) sorted by popularity.
     final data = await _fetchAndDecode('/discover/tv?with_genres=16&sort_by=popularity.desc');
     return (data['results'] as List<dynamic>?) ?? [];
   }
@@ -139,6 +155,7 @@ static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
     final data = await _fetchAndDecode('/search/multi?query=$encoded');
     return (data['results'] as List<dynamic>?) ?? [];
   }
+
   // Simple internet connectivity check
   static Future<bool> hasInternetConnection() async {
     try {
@@ -149,4 +166,3 @@ static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
     }
   }
 }
-

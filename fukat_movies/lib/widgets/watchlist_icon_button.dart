@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import '../services/watchlist_service.dart';
 
 class WatchlistIconButton extends StatefulWidget {
@@ -24,7 +25,14 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
   @override
   void initState() {
     super.initState();
-    _isSaved = WatchlistService.isSaved(widget.tmdbId);
+    _loadSaved();
+  }
+
+  Future<void> _loadSaved() async {
+    final saved = await WatchlistService.isSaved(widget.tmdbId);
+    setState(() {
+      _isSaved = saved;
+    });
   }
 
   void _toggleWatchlist() async {
@@ -34,17 +42,20 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
       widget.posterPath,
       widget.isMovie,
     );
+    // Refresh saved state after toggle
+    final saved = await WatchlistService.isSaved(widget.tmdbId);
     setState(() {
-      _isSaved = !_isSaved;
+      _isSaved = saved;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
+    return ValueListenableBuilder<Box<dynamic>>(
       valueListenable: WatchlistService.listenable,
       builder: (context, box, _) {
-        _isSaved = WatchlistService.isSaved(widget.tmdbId);
+        // Update saved state based on box changes
+        _isSaved = box.containsKey(widget.tmdbId);
         return IconButton(
           icon: Icon(
             _isSaved ? Icons.bookmark : Icons.bookmark_border,

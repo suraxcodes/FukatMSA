@@ -5,6 +5,8 @@ import '../widgets/watchlist_icon_button.dart';
 import '../services/continue_watching_service.dart';
 import 'search_screen.dart';
 import 'watchlist_screen.dart';
+import 'settings_screen.dart';
+import '../services/supabase_sync_service.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -22,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _fetchData();
+    SupabaseSyncService.pullContinueWatching();
   }
 
   Future<void> _fetchData() async {
@@ -261,6 +264,15 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => SearchScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.settings, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
             },
           ),
