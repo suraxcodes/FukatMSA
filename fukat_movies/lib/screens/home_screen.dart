@@ -6,6 +6,7 @@ import '../services/continue_watching_service.dart';
 import 'search_screen.dart';
 import 'watchlist_screen.dart';
 
+
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
