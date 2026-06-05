@@ -5,7 +5,7 @@ import '../models/ad_block_config.dart';
 
 class AdBlockService {
   // Remote config URL (GitHub raw). Replace with your actual URL.
-  static const String _remoteConfigUrl = 'https://raw.githubusercontent.com/yourname/fukatMovies/main/adblock_config.json';
+  static const String _remoteConfigUrl = 'https://raw.githubusercontent.com/suraxcodes/FukatMSA/main/adblock_config.json';
 
   // In‑memory cache of the loaded config
   static AdBlockConfig? _cachedConfig;

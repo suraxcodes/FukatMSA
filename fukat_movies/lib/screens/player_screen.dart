@@ -267,9 +267,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
           shouldOverrideUrlLoading: (controller, navigationAction) async {
             var url = navigationAction.request.url?.toString() ?? '';
-            var isForMainFrame = navigationAction.isForMainFrame ?? false;
-
-            if (isForMainFrame) {
+            if (navigationAction.isForMainFrame) {
               bool blocked = await AdBlockService.isAdDomain(url);
               if (blocked) {
                 print('Blocked navigation to ad domain: $url');

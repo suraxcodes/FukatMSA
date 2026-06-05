@@ -1,0 +1,34 @@
+{
+  "domains": [
+    "doubleclick.net",
+    "googlesyndication.com",
+    "adnxs.com",
+    "popads.net",
+    "popcash.net",
+    "exoclick.com",
+    "trafficjunky.net",
+    "vidsrcme.ru"
+  ],
+  "selectors": {
+    "player.videasy.net": [
+      ".logo",
+      ".header-menu",
+      ".footer",
+      ".share-btn"
+    ],
+    "vidsrcme.ru": [
+      "#logo",
+      ".top-navigation",
+      ".server-sidebar",
+      ".ads-overlay",
+      ".ad",
+      ".ads",
+      ".popup",
+      "#ad-banner",
+      ".banner",
+      ".advertisement",
+      ".video-wrapper .ads",
+      ".player-overlay"
+    ]
+  }
+}
