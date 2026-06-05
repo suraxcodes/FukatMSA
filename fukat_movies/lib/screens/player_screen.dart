@@ -257,7 +257,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           initialUserScripts: UnmodifiableListView<UserScript>([
             UserScript(
-              source: AdBlockService.getUiCleanerScript(currentUrl),
+              source: "",
               injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
               forMainFrameOnly: false, // Injects into all nested iframes!
             ),
@@ -270,10 +270,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             var isForMainFrame = navigationAction.isForMainFrame ?? false;
 
             if (isForMainFrame) {
-              bool isAdDomain = AdBlockService.adBlocklistDomains.any(
-                (domain) => url.contains(domain),
-              );
-              if (isAdDomain) {
+              bool blocked = await AdBlockService.isAdDomain(url);
+              if (blocked) {
                 print('Blocked navigation to ad domain: $url');
                 return NavigationActionPolicy.CANCEL;
               }
@@ -282,7 +280,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
           onLoadStop: (controller, url) async {
             if (url != null) {
-              final script = AdBlockService.getUiCleanerScript(url.toString());
+              final script = await AdBlockService.getUiCleanerScript(url.toString());
               await controller.evaluateJavascript(source: script);
               await Future.delayed(const Duration(milliseconds: 1500));
               await controller.evaluateJavascript(source: script);
