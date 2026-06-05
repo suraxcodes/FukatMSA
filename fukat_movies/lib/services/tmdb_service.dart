@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class TmdbService {
-  static const String _baseUrl = 'https://api.themoviedb.org/3';
+  static String get _baseUrl => dotenv.env['TMDB_BASE_URL'] ?? 'https://api.tmdb.org/3';
 
   // Background Isolate JSON parser to eliminate UI frame jank
   static Map<String, dynamic> _parseJson(String responseBody) {

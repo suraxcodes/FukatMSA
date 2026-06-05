@@ -18,4 +18,22 @@ class SupabaseAuthService {
   static User? get currentUser => _supabase.auth.currentUser;
 
   static Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
+
+  static bool get isPremium {
+    final user = currentUser;
+    if (user == null) return false;
+    final metadata = user.userMetadata;
+    return metadata != null && metadata['is_premium'] == true;
+  }
+
+  static Future<void> upgradeToPremium() async {
+    final user = currentUser;
+    if (user != null) {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'is_premium': true},
+        ),
+      );
+    }
+  }
 }

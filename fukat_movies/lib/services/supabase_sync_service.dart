@@ -21,7 +21,7 @@ class SupabaseSyncService {
           'media_id': data['tmdbId'].toString(),
           'current_time_seconds': data['position'] ?? 0,
           'total_duration_seconds': data['duration'] ?? 0,
-          'updated_at': data['timestamp'] ?? DateTime.now().toIso8601String(),
+          'updated_at': data['savedAt'] ?? DateTime.now().toIso8601String(),
         });
       }
     } catch (e) {
@@ -49,13 +49,13 @@ class SupabaseSyncService {
         
         if (localItem != null) {
           final localMap = Map<String, dynamic>.from(localItem as Map);
-          final localTime = DateTime.parse(localMap['timestamp']?.toString() ?? DateTime.fromMillisecondsSinceEpoch(0).toIso8601String());
+          final localTime = DateTime.parse(localMap['savedAt']?.toString() ?? DateTime.fromMillisecondsSinceEpoch(0).toIso8601String());
           
           if (remoteTime.isAfter(localTime)) {
             // Remote is newer, update local
             localMap['position'] = row['current_time_seconds'];
             localMap['duration'] = row['total_duration_seconds'];
-            localMap['timestamp'] = remoteTime.toIso8601String();
+            localMap['savedAt'] = remoteTime.toIso8601String();
             await box.put(mediaId, localMap);
           }
         } else {
@@ -65,7 +65,7 @@ class SupabaseSyncService {
             'tmdbId': mediaId,
             'position': row['current_time_seconds'],
             'duration': row['total_duration_seconds'],
-            'timestamp': remoteTime.toIso8601String(),
+            'savedAt': remoteTime.toIso8601String(),
             'isMovie': true, // Assumed default, might need better handling
             'title': 'Synced Item',
             'posterPath': null,

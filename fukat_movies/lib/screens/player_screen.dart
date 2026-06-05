@@ -12,7 +12,11 @@ class PlayerScreen extends StatefulWidget {
   final bool isMovie;
   final String title;
 
-  PlayerScreen({required this.tmdbId, required this.isMovie, required this.title});
+  PlayerScreen({
+    required this.tmdbId,
+    required this.isMovie,
+    required this.title,
+  });
 
   @override
   _PlayerScreenState createState() => _PlayerScreenState();
@@ -27,7 +31,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String currentSeason = "1";
   String currentEpisode = "1";
   bool _isPlaying = false;
-  String _bannerUrl = 'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
+  String _bannerUrl =
+      'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
   // New state for dynamic season/episode lists
   List<String> _seasons = [];
   Map<String, List<String>> _episodesPerSeason = {};
@@ -40,13 +45,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _initializePlaybackData() async {
     // Fetch IMDB ID since some providers require it
-    final imdbId = await TmdbService.getImdbId(int.parse(widget.tmdbId), widget.isMovie);
-    
+    final imdbId = await TmdbService.getImdbId(
+      int.parse(widget.tmdbId),
+      widget.isMovie,
+    );
+
     // Attempt to get banner/backdrop and season data if series
     if (!widget.isMovie) {
-      final seriesData = await TmdbService.getSeriesDetails(int.parse(widget.tmdbId));
+      final seriesData = await TmdbService.getSeriesDetails(
+        int.parse(widget.tmdbId),
+      );
       if (seriesData != null && seriesData['backdrop_path'] != null) {
-        _bannerUrl = 'https://image.tmdb.org/t/p/w1280${seriesData['backdrop_path']}';
+        _bannerUrl =
+            'https://image.tmdb.org/t/p/w1280${seriesData['backdrop_path']}';
       }
       // Load seasons and episodes
       if (seriesData != null && seriesData['seasons'] != null) {
@@ -56,8 +67,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         for (var season in seasonList) {
           final seasonNumber = season['season_number'].toString();
           seasons.add(seasonNumber);
-          final episodes = await TmdbService.getSeasonEpisodes(int.parse(widget.tmdbId), int.parse(seasonNumber));
-          final epNumbers = episodes.map((e) => e['episode_number'].toString()).toList();
+          final episodes = await TmdbService.getSeasonEpisodes(
+            int.parse(widget.tmdbId),
+            int.parse(seasonNumber),
+          );
+          final epNumbers = episodes
+              .map((e) => e['episode_number'].toString())
+              .toList();
           episodesMap[seasonNumber] = epNumbers;
         }
         setState(() {
@@ -73,7 +89,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     setState(() {
-      currentImdbId = imdbId ?? widget.tmdbId; // Fallback to TMDB if IMDB not found
+      currentImdbId =
+          imdbId ?? widget.tmdbId; // Fallback to TMDB if IMDB not found
       isInitializing = false;
       _preparePlaybackUrl();
     });
@@ -85,27 +102,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     var activeProvider = providersList[currentProviderIndex];
-    String activeId = (activeProvider['id_type'] == "tmdb") ? widget.tmdbId : currentImdbId!;
-    
+    String activeId = (activeProvider['id_type'] == "tmdb")
+        ? widget.tmdbId
+        : currentImdbId!;
+
     String requestUrl = "";
     if (widget.isMovie) {
       requestUrl = "${activeProvider['movie_url']}$activeId";
     } else {
       switch (activeProvider['format_style']) {
         case "slash":
-          requestUrl = "${activeProvider['tv_url']}$activeId/$currentSeason/$currentEpisode";
+          requestUrl =
+              "${activeProvider['tv_url']}$activeId/$currentSeason/$currentEpisode";
           break;
         case "query":
-          requestUrl = "${activeProvider['tv_url']}$activeId&season=$currentSeason&episode=$currentEpisode";
+          requestUrl =
+              "${activeProvider['tv_url']}$activeId&season=$currentSeason&episode=$currentEpisode";
           break;
         case "query_mix":
-          requestUrl = "${activeProvider['tv_url']}$activeId&s=$currentSeason&e=$currentEpisode";
+          requestUrl =
+              "${activeProvider['tv_url']}$activeId&s=$currentSeason&e=$currentEpisode";
           break;
         default:
           requestUrl = "${activeProvider['tv_url']}$activeId";
       }
     }
-    
+
     setState(() {
       currentUrl = requestUrl;
     });
@@ -115,11 +137,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() {
       _isPlaying = true;
     });
-    
+
     if (webViewController != null) {
-      webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(currentUrl)));
+      webViewController!.loadUrl(
+        urlRequest: URLRequest(url: WebUri(currentUrl)),
+      );
     }
-    
+
     ContinueWatchingService.saveItem(
       tmdbId: widget.tmdbId,
       title: widget.title,
@@ -137,13 +161,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _preparePlaybackUrl();
     });
     if (_isPlaying && webViewController != null) {
-      webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(currentUrl)));
+      webViewController!.loadUrl(
+        urlRequest: URLRequest(url: WebUri(currentUrl)),
+      );
     }
   }
 
   Widget _buildVideoPlayerArea() {
     if (currentProviderIndex >= RemoteConfigService.activeProviders.length) {
-      return Center(child: Text("No streams available.", style: TextStyle(color: Colors.white)));
+      return Center(
+        child: Text(
+          "No streams available.",
+          style: TextStyle(color: Colors.white),
+        ),
+      );
     }
 
     if (!_isPlaying) {
@@ -155,8 +186,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             width: double.infinity,
             height: double.infinity,
             fit: BoxFit.cover,
-            placeholder: (context, url) => Center(child: CircularProgressIndicator(color: Colors.redAccent)),
-            errorWidget: (context, url, error) => Icon(Icons.broken_image, size: 64, color: Colors.grey),
+            placeholder: (context, url) => Center(
+              child: CircularProgressIndicator(color: Colors.redAccent),
+            ),
+            errorWidget: (context, url, error) =>
+                Icon(Icons.broken_image, size: 64, color: Colors.grey),
           ),
           Material(
             color: Colors.transparent,
@@ -167,12 +201,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF8A2BE2).withOpacity(0.8), // Purple play button from reference
+                  color: const Color(
+                    0xFF8A2BE2,
+                  ).withOpacity(0.8), // Purple play button from reference
                 ),
-                child: const Icon(Icons.play_arrow, size: 64, color: Colors.white),
+                child: const Icon(
+                  Icons.play_arrow,
+                  size: 64,
+                  color: Colors.white,
+                ),
               ),
             ),
-          )
+          ),
         ],
       );
     }
@@ -203,7 +243,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return NavigationActionPolicy.ALLOW;
       },
       onLoadStop: (controller, url) async {
-        await controller.evaluateJavascript(source: AdBlockService.sandboxJsInjection);
+        await controller.evaluateJavascript(
+          source: AdBlockService.sandboxJsInjection,
+        );
       },
       onReceivedError: (controller, request, error) {
         if (request.isForMainFrame ?? false) {
@@ -211,7 +253,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       },
       onReceivedHttpError: (controller, request, errorResponse) {
-        if ((request.isForMainFrame ?? false) && errorResponse.statusCode == 400) {
+        if ((request.isForMainFrame ?? false) &&
+            errorResponse.statusCode == 400) {
           _triggerFailover();
         }
       },
@@ -243,13 +286,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildControlButton(IconData icon, String label, {bool isActive = false}) {
+  Widget _buildControlButton(
+    IconData icon,
+    String label, {
+    bool isActive = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: isActive ? const Color(0xFF8A2BE2) : Colors.white70, size: 20),
+          Icon(
+            icon,
+            color: isActive ? const Color(0xFF8A2BE2) : Colors.white70,
+            size: 20,
+          ),
           const SizedBox(height: 4),
           Text(
             label,
@@ -286,9 +337,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
         // Main video player area (takes remaining vertical space)
-        Flexible(
-          child: _buildVideoPlayerArea(),
-        ),
+        Flexible(child: _buildVideoPlayerArea()),
       ],
     );
   }
@@ -307,11 +356,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: isWide ? null : AppBar(
-        title: Text(widget.title, style: TextStyle(color: Colors.white, fontSize: 16)),
-        backgroundColor: Colors.black,
-        iconTheme: IconThemeData(color: Colors.white),
-      ),
+      appBar: isWide
+          ? null
+          : AppBar(
+              title: Text(
+                widget.title,
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              backgroundColor: Colors.black,
+              iconTheme: IconThemeData(color: Colors.white),
+            ),
       body: SafeArea(
         child: isWide
             ? Row(
@@ -330,17 +384,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _isPlaying = false; // Reset to banner state on episode change
                             _preparePlaybackUrl();
                           });
+                          _startPlayback();
                         },
                       ),
                     ),
                   // Right Side: Player Section
                   SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.4,
-                      child: _buildPlayerSection(),
-                    ),
+                    height: MediaQuery.of(context).size.height * 0.4,
+                    child: _buildPlayerSection(),
+                  ),
                 ],
               )
             : Column(
@@ -364,16 +418,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _isPlaying = false;
                             _preparePlaybackUrl();
                           });
+                          _startPlayback();
                         },
                       ),
                     ),
                 ],
               ),
-            ),
-          );
-        }
+      ),
+    );
   }
-
+}

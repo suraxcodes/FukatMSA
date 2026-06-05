@@ -29,12 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
           password: _passwordController.text.trim(),
         );
       }
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-        );
-      }
+      // AuthWrapper will automatically transition to HomeScreen based on authStateChanges
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

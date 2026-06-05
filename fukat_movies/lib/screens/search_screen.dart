@@ -4,6 +4,8 @@ import '../services/tmdb_service.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
 import '../widgets/watchlist_icon_button.dart';
+import '../services/supabase_auth_service.dart';
+import '../monetization/services/ad_service.dart';
 
 class SearchScreen extends StatefulWidget {
   @override
@@ -108,7 +110,11 @@ class _SearchScreenState extends State<SearchScreen> {
                     final isMovie = mediaType == 'movie' || item['title'] != null;
 
                     return GestureDetector(
-                      onTap: () {
+                      onTap: () async {
+                        if (!SupabaseAuthService.isPremium) {
+                          await MockAdService().showInterstitialAd(context);
+                        }
+                        if (!context.mounted) return;
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -126,7 +132,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             borderRadius: BorderRadius.circular(8),
                             child: posterPath != null
                                 ? Image.network(
-                                    'https://image.tmdb.org/t/p/w500\$posterPath',
+                                    'https://image.tmdb.org/t/p/w500$posterPath',
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     height: double.infinity,

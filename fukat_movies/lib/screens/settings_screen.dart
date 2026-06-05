@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/custom_repo_service.dart';
 import '../services/supabase_auth_service.dart';
+import '../monetization/screens/premium_screen.dart';
 import 'auth_screen.dart';
 import 'home_screen.dart';
 
@@ -119,10 +120,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             title: const Text('Logged in as', style: TextStyle(color: Colors.white70)),
             subtitle: Text(userEmail, style: const TextStyle(color: Colors.white, fontSize: 16)),
-            trailing: IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: _signOut,
-              tooltip: 'Sign Out',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!SupabaseAuthService.isPremium && user != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PremiumScreen()));
+                    },
+                    icon: const Icon(Icons.workspace_premium, color: Colors.amber),
+                    label: const Text('Get Premium', style: TextStyle(color: Colors.amber)),
+                  )
+                else if (user != null)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.workspace_premium, color: Colors.amber),
+                        SizedBox(width: 4),
+                        Text('Premium', style: TextStyle(color: Colors.amber)),
+                      ],
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.logout, color: Colors.white),
+                  onPressed: _signOut,
+                  tooltip: 'Sign Out',
+                ),
+              ],
             ),
           ),
           const Divider(color: Colors.white24, height: 32),

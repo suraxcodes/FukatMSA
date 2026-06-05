@@ -97,8 +97,7 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<AuthState>(
       stream: SupabaseAuthService.authStateChanges,
       builder: (context, snapshot) {
-        // Handle loading state gracefully while Supabase checks the active session tokens
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (!snapshot.hasData) {
           return const Scaffold(
             backgroundColor: Color(0xFF141414),
             body: Center(
@@ -107,10 +106,9 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // Evaluate active login session state
         final session = snapshot.data?.session;
         if (session != null) {
-          return HomeScreen(); // Added const for performance optimization
+          return HomeScreen();
         }
         
         return const AuthScreen();

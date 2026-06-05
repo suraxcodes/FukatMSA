@@ -3,6 +3,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../services/watchlist_service.dart';
 import 'player_screen.dart';
 import '../widgets/watchlist_icon_button.dart';
+import '../services/supabase_auth_service.dart';
+import '../monetization/services/ad_service.dart';
 
 class WatchlistScreen extends StatelessWidget {
   @override
@@ -54,7 +56,11 @@ class WatchlistScreen extends StatelessWidget {
                   final isMovie = item['isMovie'];
 
                   return GestureDetector(
-                    onTap: () {
+                    onTap: () async {
+                      if (!SupabaseAuthService.isPremium) {
+                        await MockAdService().showInterstitialAd(context);
+                      }
+                      if (!context.mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(

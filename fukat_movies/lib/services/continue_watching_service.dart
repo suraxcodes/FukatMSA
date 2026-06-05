@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'supabase_sync_service.dart';
@@ -25,8 +26,12 @@ class ContinueWatchingService {
       'savedAt': DateTime.now().toIso8601String(),
     });
     
-    // Trigger sync in background
-    SupabaseSyncService.syncContinueWatching();
+    // Trigger sync in background safely without crashing the local thread
+    unawaited(
+      SupabaseSyncService.syncContinueWatching().catchError((e) {
+        print("Background progress sync paused: $e");
+      })
+    );
   }
 
   static Future<void> removeItem(String tmdbId) async {
@@ -46,3 +51,6 @@ class ContinueWatchingService {
 
 
 }
+
+
+

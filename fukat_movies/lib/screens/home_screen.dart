@@ -7,6 +7,8 @@ import 'search_screen.dart';
 import 'watchlist_screen.dart';
 import 'settings_screen.dart';
 import '../services/supabase_sync_service.dart';
+import '../services/supabase_auth_service.dart';
+import '../monetization/services/ad_service.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -92,7 +94,11 @@ class _HomeScreenState extends State<HomeScreen> {
               final tmdbId = item['id'].toString();
 
               return GestureDetector(
-                onTap: () {
+                onTap: () async {
+                  if (!SupabaseAuthService.isPremium) {
+                    await MockAdService().showInterstitialAd(context);
+                  }
+                  if (!context.mounted) return;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -180,7 +186,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   final isMovie = item['isMovie'];
                   final posterPath = item['posterPath'];
                   return GestureDetector(
-                    onTap: () {
+                    onTap: () async {
+                      if (!SupabaseAuthService.isPremium) {
+                        await MockAdService().showInterstitialAd(context);
+                      }
+                      if (!context.mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(

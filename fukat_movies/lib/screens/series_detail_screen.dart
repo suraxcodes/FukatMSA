@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/tmdb_service.dart';
 import 'player_screen.dart';
+import '../services/supabase_auth_service.dart';
+import '../monetization/services/ad_service.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
   final String tmdbId;
@@ -112,8 +114,12 @@ class _EpisodeSheet extends StatelessWidget {
                   return ListTile(
                     title: Text('Ep $epNum – $title', style: const TextStyle(color: Colors.white70)),
                     subtitle: Text(overview, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white38)),
-                    onTap: () {
+                    onTap: () async {
                       Navigator.pop(context);
+                      if (!SupabaseAuthService.isPremium) {
+                        await MockAdService().showInterstitialAd(context);
+                      }
+                      if (!context.mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
