@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
+import '../services/tmdb_service.dart';
 
 /// Side panel (or bottom panel on mobile) UI for selecting season & episode.
 /// It receives the list of seasons and episodes per season generated from TMDB.
 class EpisodeSidePanel extends StatefulWidget {
+  final String tmdbId;
   final String currentSeason;
   final String currentEpisode;
   final void Function(String season, String episode) onEpisodeSelected;
   final List<String> seasons;
-  final Map<String, List<String>> episodesPerSeason;
 
   const EpisodeSidePanel({
     Key? key,
+    required this.tmdbId,
     required this.currentSeason,
     required this.currentEpisode,
     required this.onEpisodeSelected,
     required this.seasons,
-    required this.episodesPerSeason,
   }) : super(key: key);
 
   @override
@@ -24,15 +25,32 @@ class EpisodeSidePanel extends StatefulWidget {
 
 class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
   late String _selectedSeason;
+  List<String> _currentEpisodes = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _selectedSeason = widget.currentSeason;
+    _loadEpisodesForActiveSeason(_selectedSeason);
   }
 
-  List<String> get _currentEpisodes =>
-      widget.episodesPerSeason[_selectedSeason] ?? [];
+  Future<void> _loadEpisodesForActiveSeason(String seasonNumber) async {
+    setState(() => _isLoading = true);
+    
+    // Fetch ONLY the active season directly from the server
+    final episodes = await TmdbService.getSeasonEpisodes(
+      int.parse(widget.tmdbId), 
+      int.parse(seasonNumber)
+    );
+    
+    if (mounted) {
+      setState(() {
+        _currentEpisodes = episodes.map((e) => e['episode_number'].toString()).toList();
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,10 +93,11 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                           .map((e) => DropdownMenuItem(value: e, child: Text('Season $e')))
                           .toList(),
                       onChanged: (val) {
-                        if (val != null) {
+                        if (val != null && val != _selectedSeason) {
                           setState(() {
                             _selectedSeason = val;
                           });
+                          _loadEpisodesForActiveSeason(val);
                         }
                       },
                     ),
@@ -90,7 +109,9 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
           const SizedBox(height: 16),
           // Episodes grid
           Expanded(
-            child: GridView.builder(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF8A2BE2)))
+              : GridView.builder(
               itemCount: _currentEpisodes.length,
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 60,

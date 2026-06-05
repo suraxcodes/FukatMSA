@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -33,9 +34,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isPlaying = false;
   String _bannerUrl =
       'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
-  // New state for dynamic season/episode lists
+  // New state for dynamic season lists
   List<String> _seasons = [];
-  Map<String, List<String>> _episodesPerSeason = {};
 
   @override
   void initState() {
@@ -59,26 +59,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _bannerUrl =
             'https://image.tmdb.org/t/p/w1280${seriesData['backdrop_path']}';
       }
-      // Load seasons and episodes
+      // Load seasons list only
       if (seriesData != null && seriesData['seasons'] != null) {
         final seasonList = seriesData['seasons'] as List<dynamic>;
         List<String> seasons = [];
-        Map<String, List<String>> episodesMap = {};
         for (var season in seasonList) {
-          final seasonNumber = season['season_number'].toString();
-          seasons.add(seasonNumber);
-          final episodes = await TmdbService.getSeasonEpisodes(
-            int.parse(widget.tmdbId),
-            int.parse(seasonNumber),
-          );
-          final epNumbers = episodes
-              .map((e) => e['episode_number'].toString())
-              .toList();
-          episodesMap[seasonNumber] = epNumbers;
+          seasons.add(season['season_number'].toString());
         }
         setState(() {
           _seasons = seasons;
-          _episodesPerSeason = episodesMap;
           if (_seasons.isNotEmpty) {
             currentSeason = _seasons.first;
           }
@@ -263,7 +252,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             supportZoom: false,
             disableContextMenu: true,
             useShouldOverrideUrlLoading: true,
+            javaScriptCanOpenWindowsAutomatically: false,
+            supportMultipleWindows: false,
           ),
+          initialUserScripts: UnmodifiableListView<UserScript>([
+            UserScript(
+              source: AdBlockService.getUiCleanerScript(currentUrl),
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+              forMainFrameOnly: false, // Injects into all nested iframes!
+            ),
+          ]),
           onWebViewCreated: (controller) {
             webViewController = controller;
           },
@@ -409,10 +407,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                       child: EpisodeSidePanel(
+                        tmdbId: widget.tmdbId,
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
                         seasons: _seasons,
-                        episodesPerSeason: _episodesPerSeason,
                         onEpisodeSelected: (season, episode) {
                           setState(() {
                             currentSeason = season;
@@ -438,10 +436,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!widget.isMovie)
                     Expanded(
                       child: EpisodeSidePanel(
+                        tmdbId: widget.tmdbId,
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
                         seasons: _seasons,
-                        episodesPerSeason: _episodesPerSeason,
                         onEpisodeSelected: (season, episode) {
                           setState(() {
                             currentSeason = season;
