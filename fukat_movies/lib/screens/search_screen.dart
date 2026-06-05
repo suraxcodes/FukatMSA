@@ -14,7 +14,9 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  List<dynamic> _searchResults = [];
+  List<dynamic> _movieResults = [];
+  List<dynamic> _seriesResults = [];
+  List<dynamic> _animeResults = [];
   bool _isLoading = false;
   Timer? _debounce;
 
@@ -32,7 +34,9 @@ class _SearchScreenState extends State<SearchScreen> {
         _performSearch(query);
       } else {
         setState(() {
-          _searchResults = [];
+          _movieResults = [];
+          _seriesResults = [];
+          _animeResults = [];
         });
       }
     });
@@ -45,7 +49,17 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final results = await TmdbService.searchMedia(query);
       setState(() {
-        _searchResults = results;
+        _movieResults = results.where((item) => 
+            item['media_type'] == 'movie' && 
+            !(item['genre_ids']?.contains(16) ?? false)).toList();
+        
+        _seriesResults = results.where((item) => 
+            item['media_type'] == 'tv' && 
+            !(item['genre_ids']?.contains(16) ?? false)).toList();
+            
+        _animeResults = results.where((item) => 
+            item['genre_ids']?.contains(16) ?? false).toList();
+            
         _isLoading = false;
       });
     } catch (e) {
@@ -54,6 +68,103 @@ class _SearchScreenState extends State<SearchScreen> {
       });
     }
   }
+
+  Widget _buildSection(String sectionTitle, List<dynamic> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
+          child: Text(
+            sectionTitle,
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(
+          height: 230,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final posterPath = item['poster_path'];
+              final title = item['title'] ?? item['name'] ?? 'Unknown';
+              final tmdbId = item['id'].toString();
+              final mediaType = item['media_type'];
+              final isMovie = mediaType == 'movie' || item['title'] != null;
+
+              return Container(
+                width: 120,
+                margin: EdgeInsets.only(right: 12.0),
+                child: GestureDetector(
+              onTap: () async {
+                if (!SupabaseAuthService.isPremium) {
+                  await MockAdService().showInterstitialAd(context);
+                }
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PlayerScreen(
+                      tmdbId: tmdbId,
+                      isMovie: isMovie,
+                      title: title,
+                    ),
+                  ),
+                );
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: posterPath != null
+                              ? Image.network(
+                                  'https://image.tmdb.org/t/p/w500$posterPath',
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                )
+                              : Container(
+                                  color: Colors.grey[800],
+                                  child: Center(
+                                    child: Icon(Icons.movie, color: Colors.white38, size: 40),
+                                  ),
+                                ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: WatchlistIconButton(
+                            tmdbId: tmdbId,
+                            title: title,
+                            posterPath: posterPath,
+                            isMovie: isMovie,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  ],
+);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +178,7 @@ class _SearchScreenState extends State<SearchScreen> {
           autofocus: true,
           style: TextStyle(color: Colors.white),
           decoration: InputDecoration(
-            hintText: 'Search movies and TV shows...',
+            hintText: 'Search movies, shows, anime...',
             hintStyle: TextStyle(color: Colors.white54),
             border: InputBorder.none,
           ),
@@ -85,83 +196,21 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: Colors.redAccent))
-          : _searchResults.isEmpty
+          : (_movieResults.isEmpty && _seriesResults.isEmpty && _animeResults.isEmpty)
               ? Center(
                   child: Text(
                     'No results',
                     style: TextStyle(color: Colors.white54, fontSize: 18),
                   ),
                 )
-              : GridView.builder(
+              : ListView(
                   padding: EdgeInsets.all(8),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: _searchResults.length,
-                  itemBuilder: (context, index) {
-                    final item = _searchResults[index];
-                    final posterPath = item['poster_path'];
-                    final title = item['title'] ?? item['name'] ?? 'Unknown';
-                    final tmdbId = item['id'].toString();
-                    final mediaType = item['media_type'];
-                    final isMovie = mediaType == 'movie' || item['title'] != null;
-
-                    return GestureDetector(
-                      onTap: () async {
-                        if (!SupabaseAuthService.isPremium) {
-                          await MockAdService().showInterstitialAd(context);
-                        }
-                        if (!context.mounted) return;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PlayerScreen(
-                              tmdbId: tmdbId,
-                              isMovie: isMovie,
-                              title: title,
-                            ),
-                          ),
-                        );
-                      },
-                      child: Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: posterPath != null
-                                ? Image.network(
-                                    'https://image.tmdb.org/t/p/w500$posterPath',
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                  )
-                                : Container(
-                                    color: Colors.grey[800],
-                                    child: Center(
-                                      child: Text(
-                                        title,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(color: Colors.white70),
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: WatchlistIconButton(
-                              tmdbId: tmdbId,
-                              title: title,
-                              posterPath: posterPath,
-                              isMovie: isMovie,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  children: [
+                    if (_movieResults.isNotEmpty) _buildSection('Movies', _movieResults),
+                    if (_seriesResults.isNotEmpty) _buildSection('TV Shows', _seriesResults),
+                    if (_animeResults.isNotEmpty) _buildSection('Anime', _animeResults),
+                    SizedBox(height: 20),
+                  ],
                 ),
     );
   }
