@@ -96,41 +96,72 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  void _preparePlaybackUrl() {
+  Future<void> _preparePlaybackUrl() async {
     final providersList = RemoteConfigService.activeProviders;
     if (currentProviderIndex >= providersList.length) {
+      setState(() {
+        currentUrl = "";
+      });
       return;
     }
-    var activeProvider = providersList[currentProviderIndex];
-    String activeId = (activeProvider['id_type'] == "tmdb")
-        ? widget.tmdbId
-        : currentImdbId!;
 
-    String requestUrl = "";
-    if (widget.isMovie) {
-      requestUrl = "${activeProvider['movie_url']}$activeId";
+    var activeProvider = providersList[currentProviderIndex];
+    final url = await _buildPlaybackUrl(activeProvider);
+
+    if (url == null) {
+      _triggerFailover();
     } else {
-      switch (activeProvider['format_style']) {
-        case "slash":
-          requestUrl =
-              "${activeProvider['tv_url']}$activeId/$currentSeason/$currentEpisode";
-          break;
-        case "query":
-          requestUrl =
-              "${activeProvider['tv_url']}$activeId&season=$currentSeason&episode=$currentEpisode";
-          break;
-        case "query_mix":
-          requestUrl =
-              "${activeProvider['tv_url']}$activeId&s=$currentSeason&e=$currentEpisode";
-          break;
-        default:
-          requestUrl = "${activeProvider['tv_url']}$activeId";
+      setState(() {
+        currentUrl = url;
+      });
+      if (_isPlaying && webViewController != null) {
+        webViewController!.loadUrl(
+          urlRequest: URLRequest(url: WebUri(currentUrl)),
+        );
       }
     }
+  }
 
-    setState(() {
-      currentUrl = requestUrl;
-    });
+  Future<String?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
+    final String idType = provider['id_type'];
+    final String formatStyle = provider['format_style'];
+    final String baseUrl = widget.isMovie
+        ? provider['movie_url']
+        : provider['tv_url'];
+
+    // 1. Resolve Core Identifier Type (Convert TMDB to IMDb if requested)
+    String targetId = widget.tmdbId.toString();
+    if (idType == 'imdb') {
+      final imdbId = await TmdbService.getImdbId(
+        int.parse(widget.tmdbId),
+        widget.isMovie,
+      );
+      if (imdbId == null || imdbId.isEmpty)
+        return null; // Abort provider if translation fails
+      targetId = imdbId;
+    }
+
+    // 2. Compile URL based on Format Styles
+    if (widget.isMovie) {
+      if (formatStyle == 'slash' || formatStyle == 'query_mix') {
+        return '$baseUrl$targetId';
+      } else if (formatStyle == 'query') {
+        return '$baseUrl$targetId';
+      }
+    } else {
+      // TV Show Format Implementations
+      switch (formatStyle) {
+        case 'slash': // Videasy & NontonGo Style: base/tv/id/season/episode
+          return '$baseUrl$targetId/$currentSeason/$currentEpisode';
+
+        case 'query': // VidSrcMe RU Style: base/tv?imdb=id&s=season&e=episode
+          return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+
+        case 'query_mix': // 2Embed Style: base/id&s=season&e=episode
+          return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+      }
+    }
+    return null;
   }
 
   void _startPlayback() {
@@ -138,7 +169,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _isPlaying = true;
     });
 
-    if (webViewController != null) {
+    if (webViewController != null && currentUrl.isNotEmpty) {
       webViewController!.loadUrl(
         urlRequest: URLRequest(url: WebUri(currentUrl)),
       );
@@ -158,13 +189,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     print("Provider failed, triggering failover to next provider...");
     setState(() {
       currentProviderIndex++;
-      _preparePlaybackUrl();
     });
-    if (_isPlaying && webViewController != null) {
-      webViewController!.loadUrl(
-        urlRequest: URLRequest(url: WebUri(currentUrl)),
-      );
-    }
+    _preparePlaybackUrl();
   }
 
   Widget _buildVideoPlayerArea() {
@@ -192,6 +218,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
             errorWidget: (context, url, error) =>
                 Icon(Icons.broken_image, size: 64, color: Colors.grey),
           ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.transparent, Colors.black87],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
           Material(
             color: Colors.transparent,
             child: InkWell(
@@ -201,9 +236,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(
-                    0xFF8A2BE2,
-                  ).withOpacity(0.8), // Purple play button from reference
+                  color: const Color(0xFF8A2BE2).withOpacity(0.8),
                 ),
                 child: const Icon(
                   Icons.play_arrow,
@@ -217,97 +250,109 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    return InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(currentUrl)),
-      initialSettings: InAppWebViewSettings(
-        mediaPlaybackRequiresUserGesture: false,
-        javaScriptEnabled: true,
-        supportZoom: false,
-        disableContextMenu: true,
-        useShouldOverrideUrlLoading: true,
-      ),
-      onWebViewCreated: (controller) {
-        webViewController = controller;
-      },
-      shouldOverrideUrlLoading: (controller, navigationAction) async {
-        var url = navigationAction.request.url?.toString() ?? '';
-        var isForMainFrame = navigationAction.isForMainFrame ?? false;
-        if (isForMainFrame) {
-          for (var domain in AdBlockService.adBlocklistDomains) {
-            if (url.contains(domain)) {
-              print('Blocked navigation to ad domain: \$domain');
-              return NavigationActionPolicy.CANCEL;
-            }
-          }
-        }
-        return NavigationActionPolicy.ALLOW;
-      },
-      onLoadStop: (controller, url) async {
-        await controller.evaluateJavascript(
-          source: AdBlockService.sandboxJsInjection,
-        );
-      },
-      onReceivedError: (controller, request, error) {
-        if (request.isForMainFrame ?? false) {
-          _triggerFailover();
-        }
-      },
-      onReceivedHttpError: (controller, request, errorResponse) {
-        if ((request.isForMainFrame ?? false) &&
-            errorResponse.statusCode == 400) {
-          _triggerFailover();
-        }
-      },
-    );
-  }
-
-  Widget _buildControlBar() {
-    return Container(
-      color: const Color(0xFF111111),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildControlButton(Icons.fullscreen, 'Expand'),
-            _buildControlButton(Icons.play_circle_outline, 'Auto Play'),
-            _buildControlButton(Icons.check, 'Auto Next'),
-            _buildControlButton(Icons.skip_next, 'Auto Skip', isActive: true),
-            _buildControlButton(Icons.lightbulb_outline, 'Light'),
-            _buildControlButton(Icons.skip_previous, 'Prev'),
-            _buildControlButton(Icons.skip_next, 'Next'),
-            const SizedBox(width: 32),
-            _buildControlButton(Icons.report_problem, 'Report'),
-            _buildControlButton(Icons.bookmark_add, 'Add to list'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildControlButton(
-    IconData icon,
-    String label, {
-    bool isActive = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? const Color(0xFF8A2BE2) : Colors.white70,
-            size: 20,
+    return Stack(
+      children: [
+        // LAYER 1: Core Web Rendering Viewport
+        InAppWebView(
+          initialUrlRequest: currentUrl.isNotEmpty
+              ? URLRequest(url: WebUri(currentUrl))
+              : null,
+          initialSettings: InAppWebViewSettings(
+            mediaPlaybackRequiresUserGesture: false,
+            javaScriptEnabled: true,
+            supportZoom: false,
+            disableContextMenu: true,
+            useShouldOverrideUrlLoading: true,
           ),
-          const SizedBox(height: 4),
+          onWebViewCreated: (controller) {
+            webViewController = controller;
+          },
+          shouldOverrideUrlLoading: (controller, navigationAction) async {
+            var url = navigationAction.request.url?.toString() ?? '';
+            var isForMainFrame = navigationAction.isForMainFrame ?? false;
+
+            if (isForMainFrame) {
+              bool isAdDomain = AdBlockService.adBlocklistDomains.any(
+                (domain) => url.contains(domain),
+              );
+              if (isAdDomain) {
+                print('Blocked navigation to ad domain: $url');
+                return NavigationActionPolicy.CANCEL;
+              }
+            }
+            return NavigationActionPolicy.ALLOW;
+          },
+          onLoadStop: (controller, url) async {
+            if (url != null) {
+              final script = AdBlockService.getUiCleanerScript(url.toString());
+              await controller.evaluateJavascript(source: script);
+              await Future.delayed(const Duration(milliseconds: 1500));
+              await controller.evaluateJavascript(source: script);
+            }
+          },
+          onReceivedError: (controller, request, error) {
+            print(
+              "WebView Error: ${error.description} for URL: ${request.url}",
+            );
+            // We disabled automatic failover here because ad-blockers canceling
+            // popups often trigger harmless 'net::ERR_ABORTED' errors.
+          },
+          onReceivedHttpError: (controller, request, errorResponse) {
+            print(
+              "WebView HTTP Error: ${errorResponse.statusCode} for URL: ${request.url}",
+            );
+            // Disabled automatic failover for HTTP errors as well to prevent false positives.
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildServerSelector() {
+    final providers = RemoteConfigService.activeProviders;
+    if (providers.isEmpty) return SizedBox.shrink();
+
+    return Container(
+      color: const Color(0xFF1A1A1A),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Row(
+        children: [
+          Icon(Icons.dns, color: Colors.white70, size: 20),
+          SizedBox(width: 8),
           Text(
-            label,
+            "Server:",
             style: TextStyle(
-              color: isActive ? const Color(0xFF8A2BE2) : Colors.white70,
-              fontSize: 10,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: Colors.white70,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                dropdownColor: Colors.grey[900],
+                value: currentProviderIndex,
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                items: List.generate(providers.length, (index) {
+                  return DropdownMenuItem<int>(
+                    value: index,
+                    child: Text(
+                     'Server ${index + 1}: ${providers[index]['name']}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  );
+                }),
+                onChanged: (int? newIndex) {
+                  if (newIndex != null && newIndex != currentProviderIndex) {
+                    setState(() {
+                      currentProviderIndex = newIndex;
+                      _isPlaying = false;
+                      _preparePlaybackUrl();
+                    });
+                  }
+                },
+              ),
             ),
           ),
         ],
@@ -318,26 +363,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _buildPlayerSection() {
     return Column(
       children: [
-        // Top info bar matching reference
-        Container(
-          color: const Color(0xFF222222),
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, color: Colors.white70, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Data transfer is finished! Secondary servers might say 404 because of ongoing encoding...',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Main video player area (takes remaining vertical space)
         Flexible(child: _buildVideoPlayerArea()),
+        _buildServerSelector(),
       ],
     );
   }
@@ -370,10 +397,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: isWide
             ? Row(
                 children: [
-                  // Left Side: Episode Picker (if not a movie)
+                  // Left Side: Player Section (Takes maximum space)
+                  Expanded(flex: 3, child: _buildPlayerSection()),
+                  // Right Side: Episode Picker (Pinned to the right)
                   if (!widget.isMovie)
-                    SizedBox(
-                      width: 280,
+                    Container(
+                      width: 320,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(color: Colors.white12, width: 1),
+                        ),
+                      ),
                       child: EpisodeSidePanel(
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
@@ -390,18 +424,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         },
                       ),
                     ),
-                  // Right Side: Player Section
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.4,
-                    child: _buildPlayerSection(),
-                  ),
                 ],
               )
             : Column(
                 children: [
                   // Top Side: Player Section
                   SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.6,
+                    height: MediaQuery.of(context).size.height * 0.45,
                     width: double.infinity,
                     child: _buildPlayerSection(),
                   ),

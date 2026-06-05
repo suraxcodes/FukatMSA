@@ -85,21 +85,6 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              // Find num button (placeholder)
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2A2A2A),
-                    foregroundColor: Colors.white70,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  ),
-                  onPressed: () {},
-                  child: const Text('Find num!', style: TextStyle(fontSize: 12)),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
