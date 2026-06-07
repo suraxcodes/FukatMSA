@@ -36,6 +36,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
   // New state for dynamic season lists
   List<String> _seasons = [];
+  // GlobalKey prevents the WebView from being destroyed when rotating the phone
+  final GlobalKey _playerKey = GlobalKey();
 
   @override
   void initState() {
@@ -367,11 +369,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildPlayerSection() {
-    return Column(
-      children: [
-        Flexible(child: _buildVideoPlayerArea()),
-        _buildServerSelector(),
-      ],
+    return Container(
+      key: _playerKey,
+      child: Column(
+        children: [
+          Flexible(child: _buildVideoPlayerArea()),
+          _buildServerSelector(),
+        ],
+      ),
     );
   }
 
