@@ -36,6 +36,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
   // New state for dynamic season lists
   List<String> _seasons = [];
+  // GlobalKey prevents the WebView from being destroyed when rotating the phone
+  final GlobalKey _playerKey = GlobalKey();
 
   @override
   void initState() {
@@ -136,7 +138,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return '$baseUrl$targetId';
       } else if (formatStyle == 'query') {
         return '$baseUrl$targetId';
+      } else if (formatStyle == 'dash') {
+        return '$baseUrl$targetId';
       }
+      return '$baseUrl$targetId'; // Fallback for movies
     } else {
       // TV Show Format Implementations
       switch (formatStyle) {
@@ -148,9 +153,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         case 'query_mix': // 2Embed Style: base/id&s=season&e=episode
           return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+
+        case 'dash': // AutoEmbed Style: base/id-season-episode
+          return '$baseUrl$targetId-$currentSeason-$currentEpisode';
+          
+        default:
+          return '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
       }
     }
-    return null;
   }
 
   void _startPlayback() {
@@ -254,6 +264,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
             useShouldOverrideUrlLoading: true,
             javaScriptCanOpenWindowsAutomatically: false,
             supportMultipleWindows: false,
+            userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            allowsInlineMediaPlayback: true,
+            iframeAllowFullscreen: true,
+            thirdPartyCookiesEnabled: true,
+            domStorageEnabled: true,
+            databaseEnabled: true,
+            mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           ),
           initialUserScripts: UnmodifiableListView<UserScript>([
             UserScript(
@@ -325,14 +342,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<int>(
                 dropdownColor: Colors.grey[900],
-                value: currentProviderIndex,
+                value: currentProviderIndex < providers.length ? currentProviderIndex : null,
                 isExpanded: true,
                 icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
                 items: List.generate(providers.length, (index) {
                   return DropdownMenuItem<int>(
                     value: index,
                     child: Text(
-                     'Server ${index + 1}: ${providers[index]['name']}',
+                      'Server ${index + 1}: ${providers[index]['name']}',
                       style: const TextStyle(color: Colors.white),
                     ),
                   );
@@ -342,6 +359,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     setState(() {
                       currentProviderIndex = newIndex;
                       _isPlaying = false;
+                      webViewController = null;
                       _preparePlaybackUrl();
                     });
                   }
@@ -355,11 +373,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildPlayerSection() {
-    return Column(
-      children: [
-        Flexible(child: _buildVideoPlayerArea()),
-        _buildServerSelector(),
-      ],
+    return Container(
+      key: _playerKey,
+      child: Column(
+        children: [
+          Flexible(child: _buildVideoPlayerArea()),
+          _buildServerSelector(),
+        ],
+      ),
     );
   }
 
@@ -412,9 +433,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _preparePlaybackUrl();
+                            _isPlaying = false;
+                            webViewController = null;
                           });
-                          _startPlayback();
+                          _preparePlaybackUrl().then((_) {
+                            _startPlayback();
+                          });
                         },
                       ),
                     ),
@@ -441,9 +465,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _preparePlaybackUrl();
+                            _isPlaying = false;
+                            webViewController = null;
                           });
-                          _startPlayback();
+                          _preparePlaybackUrl().then((_) {
+                            _startPlayback();
+                          });
                         },
                       ),
                     ),

@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'custom_repo_service.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class RemoteConfigService {
-  // Replace this with your actual Pastebin/Gist Raw URL containing remote_config.json
-  static const String _configUrl = "https://raw.githubusercontent.com/suraxcodes/FukatMSA/main/remote_config.json";
+  // Load providers from bundled asset (assets/remote_config.json)
+  static const String _assetPath = 'assets/remote_config.json';
 
 
   static List<dynamic> _activeProviders = [];
@@ -20,26 +22,28 @@ class RemoteConfigService {
         return;
       }
 
-      final response = await http.get(Uri.parse(_configUrl));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['active_providers'] != null) {
-          _activeProviders = data['active_providers'];
-          print("Successfully loaded ${_activeProviders.length} providers from DEFAULT remote config.");
-        }
-      } else {
-        print("Failed to load remote config. Status code: ${response.statusCode}");
-        _loadFallbackConfig();
-      }
+       try {
+         final jsonString = await rootBundle.loadString(_assetPath);
+         final data = json.decode(jsonString);
+         if (data['active_providers'] != null) {
+           _activeProviders = data['active_providers'];
+           print("✅ Loaded ${_activeProviders.length} providers from bundled asset.");
+         } else {
+           print('⚠️ No active_providers in asset config.');
+         }
+       } catch (e) {
+         print('❌ Failed to load bundled asset config: $e');
+         _loadFallbackConfig();
+       }
     } catch (e) {
       print("Error fetching remote config: $e");
       _loadFallbackConfig();
     }
   }
 
-  // Fallback disabled per user request: forces the app to fetch from the URL
-  static void _loadFallbackConfig() {
-    print("Fallback disabled. Ensure the remote_config.json URL is valid.");
-    _activeProviders = [];
-  }
+   // Fallback: If bundled asset fails, keep providers empty (already logged).
+   static void _loadFallbackConfig() {
+     print('⚠️ No providers loaded after fallback attempt.');
+     _activeProviders = [];
+   }
 }
