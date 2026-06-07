@@ -34,19 +34,44 @@ const targetNodes = [
       "tv_url": "https://www.nontongo.win/embed/tv/"
     },
     {
-      "name": "SmashyStream",
+      "name": "vidsrc.fyi",
       "id_type": "tmdb",
       "format_style": "query",
-      "movie_url": "https://player.smashy.stream/movie/",
-      "tv_url": "https://player.smashy.stream/tv/"
+      "movie_url": "https://vidsrc.fyi/embed/movie/",
+      "tv_url": "https://vidsrc.fyi/embed/tv/"
     },
+
     {
-      "name": "MoviesAPI Club",
+      "name": "vidnest.fun",
       "id_type": "tmdb",
       "format_style": "slash",
-      "movie_url": "https://moviesapi.club/movie/",
-      "tv_url": "https://moviesapi.club/tv/"
-    }
+      "movie_url": "https://vidnest.fun/movie/",
+      "tv_url": "https://vidnest.fun/tv/",
+      "anime_url": "https://vidnest.fun/anime/",
+      "anime_phase": "https://vidnest.fun/animepahe/"
+    },
+    {
+      "name": "vidlink.pro",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidlink.pro/movie/",
+      "tv_url": "https://vidlink.pro/tv/"
+    },
+    {
+      "name": "vidfast.net",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.vidfast.net/movie/",
+      "tv_url": "https://www.vidfast.net/tv/"
+    },
+    {
+      "name": "111movie",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://111movies.net/movie/",
+      "tv_url": "https://111movies.net/tv/"
+    },
+
 ];
 
 const networkHeaders = {

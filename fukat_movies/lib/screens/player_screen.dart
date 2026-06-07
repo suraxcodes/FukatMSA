@@ -254,6 +254,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
             useShouldOverrideUrlLoading: true,
             javaScriptCanOpenWindowsAutomatically: false,
             supportMultipleWindows: false,
+            userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            allowsInlineMediaPlayback: true,
+            iframeAllowFullscreen: true,
+            thirdPartyCookiesEnabled: true,
+            domStorageEnabled: true,
+            databaseEnabled: true,
+            mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
           ),
           initialUserScripts: UnmodifiableListView<UserScript>([
             UserScript(
@@ -336,7 +343,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   return DropdownMenuItem<int>(
                     value: index,
                     child: Text(
-                     'Server ${index + 1}: ${providers[index]['name']}',
+                      'Server ${index + 1}: ${providers[index]['name']}',
                       style: const TextStyle(color: Colors.white),
                     ),
                   );
@@ -346,6 +353,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     setState(() {
                       currentProviderIndex = newIndex;
                       _isPlaying = false;
+                      webViewController = null;
                       _preparePlaybackUrl();
                     });
                   }
@@ -416,9 +424,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _preparePlaybackUrl();
+                            _isPlaying = false;
+                            webViewController = null;
                           });
-                          _startPlayback();
+                          _preparePlaybackUrl().then((_) {
+                            _startPlayback();
+                          });
                         },
                       ),
                     ),
@@ -445,9 +456,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             currentSeason = season;
                             currentEpisode = episode;
                             currentProviderIndex = 0;
-                            _preparePlaybackUrl();
+                            _isPlaying = false;
+                            webViewController = null;
                           });
-                          _startPlayback();
+                          _preparePlaybackUrl().then((_) {
+                            _startPlayback();
+                          });
                         },
                       ),
                     ),

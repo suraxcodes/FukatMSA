@@ -1,0 +1,49 @@
+{
+  "active_providers": [
+    {
+      "name": "VidSrcMe RU",
+      "id_type": "imdb",
+      "format_style": "query",
+      "movie_url": "https://vidsrcme.ru/embed/movie?imdb=",
+      "tv_url": "https://vidsrcme.ru/embed/tv?imdb="
+    },
+    {
+      "name": "vidsrc.fyi",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidsrc.fyi/embed/movie/",
+      "tv_url": "https://vidsrc.fyi/embed/tv/"
+    },
+    {
+      "name": "vidnest.fun",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidnest.fun/movie/",
+      "tv_url": "https://vidnest.fun/tv/",
+      "anime_url": "https://vidnest.fun/anime/",
+      "anime_phase": "https://vidnest.fun/animepahe/"
+    },
+    {
+      "name": "vidlink.pro",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidlink.pro/movie/",
+      "tv_url": "https://vidlink.pro/tv/"
+    },
+    {
+      "name": "111movie",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://111movies.net/movie/",
+      "tv_url": "https://111movies.net/tv/"
+    },
+    {
+      "name": "vidfast.net",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.vidfast.net/movie/",
+      "tv_url": "https://www.vidfast.net/tv/"
+    }
+  ],
+  "no_streams_text": "No working streams found. Please select another server."
+}
