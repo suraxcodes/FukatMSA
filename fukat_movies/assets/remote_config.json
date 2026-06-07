@@ -43,6 +43,13 @@
       "format_style": "slash",
       "movie_url": "https://www.vidfast.net/movie/",
       "tv_url": "https://www.vidfast.net/tv/"
+    },
+        {
+      "name": "AutoEmbed",
+      "id_type": "tmdb",
+      "format_style": "dash",
+      "movie_url": "https://autoembed.co/movie/tmdb/",
+      "tv_url": "https://autoembed.co/tv/tmdb/"
     }
   ],
   "no_streams_text": "No working streams found. Please select another server."

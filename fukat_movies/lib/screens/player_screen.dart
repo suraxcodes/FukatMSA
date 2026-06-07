@@ -138,7 +138,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return '$baseUrl$targetId';
       } else if (formatStyle == 'query') {
         return '$baseUrl$targetId';
+      } else if (formatStyle == 'dash') {
+        return '$baseUrl$targetId';
       }
+      return '$baseUrl$targetId'; // Fallback for movies
     } else {
       // TV Show Format Implementations
       switch (formatStyle) {
@@ -150,9 +153,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         case 'query_mix': // 2Embed Style: base/id&s=season&e=episode
           return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+
+        case 'dash': // AutoEmbed Style: base/id-season-episode
+          return '$baseUrl$targetId-$currentSeason-$currentEpisode';
+          
+        default:
+          return '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
       }
     }
-    return null;
   }
 
   void _startPlayback() {
@@ -338,7 +346,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<int>(
                 dropdownColor: Colors.grey[900],
-                value: currentProviderIndex,
+                value: currentProviderIndex < providers.length ? currentProviderIndex : null,
                 isExpanded: true,
                 icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
                 items: List.generate(providers.length, (index) {

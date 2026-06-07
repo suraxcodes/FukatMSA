@@ -1,8 +1,10 @@
 const axios = require('axios');
 
-// Test items: The Batman (TMDB: 414906, IMDb: tt1877830)
-const TEST_TMDB = "414906";
-const TEST_IMDB = "tt1877830";
+// Test items: One Piece Anime (TMDB: 37854, IMDb: tt0388629)
+const TEST_TMDB = "37854";
+const TEST_IMDB = "tt0388629";
+const TEST_SEASON = "1";
+const TEST_EPISODE = "1";
 
 const targetNodes = [
     {
@@ -71,7 +73,13 @@ const targetNodes = [
       "movie_url": "https://111movies.net/movie/",
       "tv_url": "https://111movies.net/tv/"
     },
-
+    {
+      "name": "AutoEmbed",
+      "id_type": "tmdb",
+      "format_style": "dash",
+      "movie_url": "https://autoembed.co/movie/tmdb/",
+      "tv_url": "https://autoembed.co/tv/tmdb/"
+    }
 ];
 
 const networkHeaders = {
@@ -89,13 +97,26 @@ async function executeDiagnostics() {
     for (const node of targetNodes) {
         // Correctly select the proper ID token based on provider type
         const activeId = (node.id_type === "tmdb") ? TEST_TMDB : TEST_IMDB;
-        const fullMovieUrl = `${node.movie_url}${activeId}`;
+        
+        let fullTvUrl = "";
+        if (node.format_style === "slash") {
+            fullTvUrl = `${node.tv_url}${activeId}/${TEST_SEASON}/${TEST_EPISODE}`;
+        } else if (node.format_style === "query") {
+            // For vidsrc.fyi query style might be base?imdb=id&s=season&e=episode
+            // But we already updated vidsrc.fyi to slash.
+            fullTvUrl = `${node.tv_url}${activeId}&s=${TEST_SEASON}&e=${TEST_EPISODE}`;
+        } else if (node.format_style === "dash") {
+            // AutoEmbed style
+            fullTvUrl = `${node.tv_url}${activeId}-${TEST_SEASON}-${TEST_EPISODE}`;
+        } else {
+            fullTvUrl = `${node.tv_url}${activeId}/${TEST_SEASON}/${TEST_EPISODE}`;
+        }
         
         console.log(`Analyzing [${node.name}] (Targeting ID Style: ${node.id_type.toUpperCase()})...`);
         const startTime = Date.now();
         
         try {
-            const response = await axios.get(fullMovieUrl, { 
+            const response = await axios.get(fullTvUrl, { 
                 headers: networkHeaders,
                 timeout: 5000 // 5-second gate limit
             });
@@ -104,14 +125,14 @@ async function executeDiagnostics() {
             
             // Check if the server responds with a valid web page framework
             if (response.status === 200 && response.data.length > 1000) {
-                console.log(`  MOVIE --> ✅ ONLINE | Code: 200 OK | Latency: ${duration}ms | Data Packets Intact`);
+                console.log(`  ANIME TV --> ✅ ONLINE | URL: ${fullTvUrl} | Latency: ${duration}ms`);
                 healthyCount++;
             } else {
-                console.log(`  MOVIE --> ⚠️ BLANK | Code: ${response.status} | Short/empty page layout string received.`);
+                console.log(`  ANIME TV --> ⚠️ BLANK | URL: ${fullTvUrl} | Code: ${response.status}`);
             }
         } catch (error) {
             const duration = Date.now() - startTime;
-            console.log(`  MOVIE --> ❌ DEAD | Error: ${error.message} | Latency: ${duration}ms`);
+            console.log(`  ANIME TV --> ❌ DEAD | Error: ${error.message} | URL: ${fullTvUrl} | Latency: ${duration}ms`);
         }
         console.log("-----------------------------------------------------------------");
     }
