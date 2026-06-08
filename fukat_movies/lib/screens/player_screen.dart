@@ -2,9 +2,12 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
 import '../services/ad_block_service.dart';
+import '../services/streaming_aggregator_service.dart';
 import '../widgets/episode_side_panel.dart';
 import '../services/continue_watching_service.dart';
 
@@ -39,10 +42,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // GlobalKey prevents the WebView from being destroyed when rotating the phone
   final GlobalKey _playerKey = GlobalKey();
 
+  // Native Player State
+  VideoPlayerController? _videoPlayerController;
+  ChewieController? _chewieController;
+  bool _isMappingEpisode = false;
+  String _currentEngine = "webview";
+
   @override
   void initState() {
     super.initState();
     _initializePlaybackData();
+  }
+
+  @override
+  void dispose() {
+    _videoPlayerController?.dispose();
+    _chewieController?.dispose();
+    super.dispose();
   }
 
   Future<void> _initializePlaybackData() async {
@@ -97,7 +113,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     var activeProvider = providersList[currentProviderIndex];
+    _currentEngine = activeProvider['engine'] ?? 'webview';
+
+    setState(() {
+      _isMappingEpisode = _currentEngine.startsWith('native_');
+    });
+
     final url = await _buildPlaybackUrl(activeProvider);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isMappingEpisode = false;
+    });
 
     if (url == null) {
       _triggerFailover();
@@ -105,15 +133,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
       setState(() {
         currentUrl = url;
       });
-      if (_isPlaying && webViewController != null) {
-        webViewController!.loadUrl(
-          urlRequest: URLRequest(url: WebUri(currentUrl)),
-        );
+      if (_isPlaying) {
+        if (_currentEngine == 'webview' && webViewController != null) {
+          webViewController!.loadUrl(
+            urlRequest: URLRequest(url: WebUri(currentUrl)),
+          );
+        } else if (_currentEngine.startsWith('native_')) {
+          _initializeNativePlayer(currentUrl);
+        }
       }
     }
   }
 
+  Future<void> _initializeNativePlayer(String url) async {
+    _chewieController?.dispose();
+    _videoPlayerController?.dispose();
+
+    _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
+    await _videoPlayerController!.initialize();
+
+    _chewieController = ChewieController(
+      videoPlayerController: _videoPlayerController!,
+      autoPlay: true,
+      looping: false,
+      aspectRatio: 16 / 9,
+      errorBuilder: (context, errorMessage) {
+        return Center(
+          child: Text(
+            errorMessage,
+            style: const TextStyle(color: Colors.white),
+          ),
+        );
+      },
+    );
+
+    setState(() {});
+  }
+
   Future<String?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
+    final String engine = provider['engine'] ?? 'webview';
+    
+    if (engine.startsWith('native_')) {
+      if (widget.isMovie) return null; // These aggregators are mostly anime (TV)
+      return await StreamingAggregatorService.getNativeStreamingUrl(
+        title: widget.title,
+        engine: engine,
+        season: int.tryParse(currentSeason) ?? 1,
+        episodeNumber: int.tryParse(currentEpisode) ?? 1,
+      );
+    }
+
     final String idType = provider['id_type'];
     final String formatStyle = provider['format_style'];
     final String baseUrl = widget.isMovie
@@ -156,7 +225,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         case 'dash': // AutoEmbed Style: base/id-season-episode
           return '$baseUrl$targetId-$currentSeason-$currentEpisode';
-          
+
         default:
           return '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
       }
@@ -168,10 +237,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _isPlaying = true;
     });
 
-    if (webViewController != null && currentUrl.isNotEmpty) {
-      webViewController!.loadUrl(
-        urlRequest: URLRequest(url: WebUri(currentUrl)),
-      );
+    if (currentUrl.isNotEmpty) {
+      if (_currentEngine == 'webview' && webViewController != null) {
+        webViewController!.loadUrl(
+          urlRequest: URLRequest(url: WebUri(currentUrl)),
+        );
+      } else if (_currentEngine.startsWith('native_')) {
+        _initializeNativePlayer(currentUrl);
+      }
     }
 
     ContinueWatchingService.saveItem(
@@ -199,6 +272,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
           "No streams available.",
           style: TextStyle(color: Colors.white),
         ),
+      );
+    }
+
+    if (_isMappingEpisode) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          CachedNetworkImage(
+            imageUrl: _bannerUrl,
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+            color: Colors.black54,
+            colorBlendMode: BlendMode.darken,
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.redAccent),
+              SizedBox(height: 16),
+              Text(
+                "Searching for anime stream...",
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          )
+        ],
       );
     }
 
@@ -249,6 +349,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
+    if (_currentEngine.startsWith('native_')) {
+      if (_chewieController != null && _videoPlayerController != null && _videoPlayerController!.value.isInitialized) {
+        return Container(
+          color: Colors.black,
+          child: Chewie(
+            controller: _chewieController!,
+          ),
+        );
+      } else {
+        return Center(
+          child: CircularProgressIndicator(color: Colors.redAccent),
+        );
+      }
+    }
+
     return Stack(
       children: [
         // LAYER 1: Core Web Rendering Viewport
@@ -264,7 +379,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             useShouldOverrideUrlLoading: true,
             javaScriptCanOpenWindowsAutomatically: false,
             supportMultipleWindows: false,
-            userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            userAgent:
+                "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
             allowsInlineMediaPlayback: true,
             iframeAllowFullscreen: true,
             thirdPartyCookiesEnabled: true,
@@ -295,7 +411,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
           onLoadStop: (controller, url) async {
             if (url != null) {
-              final script = await AdBlockService.getUiCleanerScript(url.toString());
+              final script = await AdBlockService.getUiCleanerScript(
+                url.toString(),
+              );
               await controller.evaluateJavascript(source: script);
               await Future.delayed(const Duration(milliseconds: 1500));
               await controller.evaluateJavascript(source: script);
@@ -342,7 +460,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<int>(
                 dropdownColor: Colors.grey[900],
-                value: currentProviderIndex < providers.length ? currentProviderIndex : null,
+                value: currentProviderIndex < providers.length
+                    ? currentProviderIndex
+                    : null,
                 isExpanded: true,
                 icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
                 items: List.generate(providers.length, (index) {
