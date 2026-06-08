@@ -27,6 +27,9 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
+  // UI State
+  bool _showControls = true;
+  bool _isFirstSubtitleLoad = true;
   InAppWebViewController? webViewController;
   int currentProviderIndex = 0;
   String? currentImdbId;
@@ -171,6 +174,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
 
         _selectedSubtitleTrack = SubtitleTrack.no(); // Reset subtitle on new video load
+        _isFirstSubtitleLoad = true;
         _hasDubAvailable = playbackData['hasDub'] == true;
       });
       if (_isPlaying) {
@@ -202,7 +206,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) {
         setState(() {
           // Filter out the 'no()' track if it's in the list, we add it manually
-          _embeddedSubtitles = tracks.subtitle.where((t) => t.id != 'no' && t.id != 'auto').toList();
+          final subs = tracks.subtitle.where((t) => t.id != 'no' && t.id != 'auto').toList();
+          _embeddedSubtitles = subs;
+
+          if (_isFirstSubtitleLoad && subs.isNotEmpty) {
+            _isFirstSubtitleLoad = false;
+            _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+          }
         });
       }
     });
@@ -211,9 +221,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Media(url, httpHeaders: headers),
       play: true,
     );
-
-    // Enforce subtitles off by default
-    _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
 
     setState(() {});
   }
