@@ -445,7 +445,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 controls: MaterialVideoControls,
               ),
             ),
-            if (_availableQualities.length > 1 || _embeddedSubtitles.isNotEmpty)
+            if (_availableQualities.length > 1 || _embeddedSubtitles.isNotEmpty || _apiSubtitles.isNotEmpty)
               Positioned(
                 top: 16,
                 right: 16,
