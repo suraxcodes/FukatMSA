@@ -6,11 +6,6 @@
       "id_type": "tmdb"
     },
     {
-      "name": "Kuudere API (Native)",
-      "engine": "native_kuudere",
-      "id_type": "tmdb"
-    },
-    {
       "name": "VidSrcMe RU",
       "id_type": "imdb",
       "format_style": "query",

@@ -18,8 +18,6 @@ class StreamingAggregatorService {
 
     if (engine == 'native_miruro') {
       return await _getMiruroStream(title, episodeNumber);
-    } else if (engine == 'native_kuudere') {
-      return await _getKuudereStream(title, episodeNumber);
     } else if (engine == 'native_proxify') {
       return await _getProxifyStream(title, episodeNumber);
     }
