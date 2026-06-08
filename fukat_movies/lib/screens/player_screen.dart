@@ -153,6 +153,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _initializeNativePlayer(String url, {Map<String, String>? headers}) async {
+    print("PlayerScreen: Initializing native player with URL: $url");
+    print("PlayerScreen: Passing HTTP Headers to VideoPlayer: $headers");
+    
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
 
@@ -256,7 +259,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           urlRequest: URLRequest(url: WebUri(currentUrl)),
         );
       } else if (_currentEngine.startsWith('native_')) {
-        _initializeNativePlayer(currentUrl);
+        _initializeNativePlayer(currentUrl, headers: currentHeaders);
       }
     }
 
