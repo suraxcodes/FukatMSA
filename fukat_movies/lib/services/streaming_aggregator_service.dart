@@ -73,8 +73,12 @@ class StreamingAggregatorService {
               if (streamRes.statusCode == 200) {
                 final streamData = json.decode(streamRes.body);
                 final streams = streamData['streams'] as List<dynamic>? ?? [];
-                if (streams.isNotEmpty) {
-                  return streams[0]['url'];
+                
+                // Filter for valid HLS streams
+                for (var s in streams) {
+                  if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
+                    return s['url'];
+                  }
                 }
               }
             }
