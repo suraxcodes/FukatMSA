@@ -31,20 +31,27 @@ class StreamingAggregatorService {
     try {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
-      print("Aggregator: Miruro fetching $searchUrl");
+      print("Aggregator: Miruro fetching search url: $searchUrl");
       final searchRes = await http.get(searchUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
 
+      print("Aggregator: Miruro search status: ${searchRes.statusCode}");
       if (searchRes.statusCode == 200) {
         final data = json.decode(searchRes.body);
         final results = data['results'] ?? [];
-        if (results.isEmpty) return null;
+        if (results.isEmpty) {
+          print("Aggregator: Miruro search returned no results.");
+          return null;
+        }
         
         final anilistId = results[0]['id'];
+        print("Aggregator: Miruro Anilist ID: $anilistId");
         
         if (anilistId != null) {
           final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
+          print("Aggregator: Miruro fetching episodes list: $epUrl");
           final epRes = await http.get(epUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
           
+          print("Aggregator: Miruro episodes status: ${epRes.statusCode}");
           if (epRes.statusCode == 200) {
             final epData = json.decode(epRes.body);
             final providers = epData['providers'] as Map<String, dynamic>? ?? {};
@@ -59,6 +66,7 @@ class StreamingAggregatorService {
               try {
                 final match = subEps.firstWhere((e) => e['number'] == ep);
                 targetWatchId = match['id'];
+                print("Aggregator: Miruro found match in provider $providerName -> $targetWatchId");
                 break;
               } catch (_) {
                 // not found in this provider
@@ -66,10 +74,11 @@ class StreamingAggregatorService {
             }
             
             if (targetWatchId != null) {
-              // The watchId is already like 'watch/kiwi/178005/sub/animepahe-1'
               final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
+              print("Aggregator: Miruro fetching stream from: $streamUrl");
               final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
               
+              print("Aggregator: Miruro stream status: ${streamRes.statusCode}");
               if (streamRes.statusCode == 200) {
                 final streamData = json.decode(streamRes.body);
                 final streams = streamData['streams'] as List<dynamic>? ?? [];
@@ -77,18 +86,26 @@ class StreamingAggregatorService {
                 // Filter for valid HLS streams
                 for (var s in streams) {
                   if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
+                    print("Aggregator: Miruro successfully extracted HLS url!");
                     return s['url'];
                   }
                 }
+                print("Aggregator: Miruro no valid HLS streams found in response.");
+              } else {
+                print("Aggregator: Miruro stream body: ${streamRes.body}");
               }
+            } else {
+              print("Aggregator: Miruro could not find episode $ep in any provider.");
             }
+          } else {
+             print("Aggregator: Miruro episodes body: ${epRes.body}");
           }
         }
       } else {
-        print("Miruro API Error: Status Code ${searchRes.statusCode}");
+        print("Miruro API Error: Status Code ${searchRes.statusCode} Body: ${searchRes.body}");
       }
     } catch (e) {
-      print("Miruro API Error: $e");
+      print("Miruro API Exception: $e");
     }
     return null;
   }
