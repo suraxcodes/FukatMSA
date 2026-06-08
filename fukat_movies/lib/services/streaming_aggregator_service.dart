@@ -11,13 +11,14 @@ class StreamingAggregatorService {
   static Future<Map<String, dynamic>?> getNativeStreamingUrl({
     required String title,
     required String engine,
-    required int season,
-    required int episodeNumber,
+    int season = 1,
+    int episodeNumber = 1,
+    bool isDub = false,
   }) async {
     print("Aggregator: Resolving $title (S$season E$episodeNumber) via $engine");
 
     if (engine == 'native_miruro') {
-      return await _getMiruroStream(title, episodeNumber);
+      return await _getMiruroStream(title, season, episodeNumber, isDub);
     } else if (engine == 'native_proxify') {
       return await _getProxifyStream(title, episodeNumber);
     }
@@ -25,28 +26,25 @@ class StreamingAggregatorService {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> _getMiruroStream(String title, int ep) async {
+  static Future<Map<String, dynamic>?> _getMiruroStream(String title, int s, int ep, bool isDub) async {
     try {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
       print("Aggregator: Miruro fetching search url: $searchUrl");
-      final searchRes = await http.get(searchUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
 
+      final searchRes = await http.get(searchUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 15));
       print("Aggregator: Miruro search status: ${searchRes.statusCode}");
+
       if (searchRes.statusCode == 200) {
-        final data = json.decode(searchRes.body);
-        final results = data['results'] ?? [];
-        if (results.isEmpty) {
-          print("Aggregator: Miruro search returned no results.");
-          return null;
-        }
-        
-        final anilistId = results[0]['id'];
-        print("Aggregator: Miruro Anilist ID: $anilistId");
-        
-        if (anilistId != null) {
+        final searchData = json.decode(searchRes.body);
+        final results = searchData['results'] as List<dynamic>? ?? [];
+        if (results.isNotEmpty) {
+          final anilistId = results.first['id'];
+          print("Aggregator: Miruro Anilist ID: $anilistId");
+          
           final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
           print("Aggregator: Miruro fetching episodes list: $epUrl");
+          
           final epRes = await http.get(epUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
           
           print("Aggregator: Miruro episodes status: ${epRes.statusCode}");
@@ -58,10 +56,15 @@ class StreamingAggregatorService {
             for (var providerName in providers.keys) {
               final provData = providers[providerName];
               final subEps = provData?['episodes']?['sub'] as List<dynamic>? ?? [];
+              final dubEps = provData?['episodes']?['dub'] as List<dynamic>? ?? [];
+              
+              bool hasSub = subEps.any((e) => e['number'] == ep);
+              bool hasDub = dubEps.any((e) => e['number'] == ep);
               
               String? targetWatchId;
               try {
-                final match = subEps.firstWhere((e) => e['number'] == ep);
+                final targetList = isDub ? dubEps : subEps;
+                final match = targetList.firstWhere((e) => e['number'] == ep);
                 targetWatchId = match['id'];
               } catch (_) {
                 // not found in this provider
@@ -104,8 +107,10 @@ class StreamingAggregatorService {
                       'streams': extractedStreams, // We return multiple streams now!
                       'url': extractedStreams.first['url'], // Fallback legacy
                       'headers': extractedStreams.first['headers'], // Fallback legacy
+                      'hasSub': hasSub,
+                      'hasDub': hasDub,
                     };
-                    print("Aggregator: Returning from Miruro: ${extractedStreams.length} qualities found.");
+                    print("Aggregator: Returning from Miruro: ${extractedStreams.length} qualities found. Dub: $hasDub, Sub: $hasSub");
                     return resultData;
                   }
                   print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");

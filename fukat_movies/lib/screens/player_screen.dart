@@ -48,6 +48,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map<String, String>? currentHeaders;
   List<Map<String, dynamic>> _availableQualities = [];
   String? _selectedQuality;
+  bool _isDub = false;
+  bool _hasDubAvailable = false;
   bool _isMappingEpisode = false;
   String _currentEngine = 'webview';
 
@@ -154,6 +156,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _availableQualities = [];
           _selectedQuality = null;
         }
+
+        _hasDubAvailable = playbackData['hasDub'] == true;
       });
       if (_isPlaying) {
         if (_currentEngine == 'webview' && webViewController != null) {
@@ -218,6 +222,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         engine: engine,
         season: int.tryParse(currentSeason) ?? 1,
         episodeNumber: int.tryParse(currentEpisode) ?? 1,
+        isDub: _isDub,
       );
     }
 
@@ -406,9 +411,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 top: 16,
                 right: 16,
                 child: SafeArea(
-                  child: PopupMenuButton<Map<String, dynamic>>(
-                    icon: const Icon(Icons.settings, color: Colors.white),
-                    color: Colors.grey[900],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_hasDubAvailable)
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[900]?.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: ToggleButtons(
+                            constraints: const BoxConstraints(minHeight: 36, minWidth: 50),
+                            isSelected: [!_isDub, _isDub],
+                            onPressed: (index) {
+                              final newIsDub = index == 1;
+                              if (_isDub != newIsDub) {
+                                setState(() {
+                                  _isDub = newIsDub;
+                                });
+                                _preparePlaybackUrl();
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            selectedColor: Colors.white,
+                            fillColor: Colors.redAccent,
+                            color: Colors.white70,
+                            children: const [
+                              Text("SUB", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              Text("DUB", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      PopupMenuButton<Map<String, dynamic>>(
+                        icon: const Icon(Icons.settings, color: Colors.white),
+                        color: Colors.grey[900],
                     onSelected: _changeQuality,
                     itemBuilder: (context) {
                       return _availableQualities.map((stream) {
