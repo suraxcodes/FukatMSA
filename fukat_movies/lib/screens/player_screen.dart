@@ -439,52 +439,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 top: 16,
                 right: 16,
                 child: SafeArea(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_embeddedSubtitles.isNotEmpty)
-                        PopupMenuButton<SubtitleTrack>(
-                          icon: const Icon(Icons.closed_caption, color: Colors.white),
-                          color: Colors.grey[900],
-                          onSelected: (track) {
-                            _changeSubtitle(track);
-                          },
-                          itemBuilder: (context) {
-                            List<PopupMenuEntry<SubtitleTrack>> items = [];
-                            
-                            items.add(
-                              PopupMenuItem<SubtitleTrack>(
-                                value: SubtitleTrack.no(),
-                                child: Text(
-                                  'Off',
-                                  style: TextStyle(
-                                    color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
-                                    fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                            );
-
-                            items.addAll(_embeddedSubtitles.map((sub) {
-                              return PopupMenuItem<SubtitleTrack>(
-                                value: sub,
-                                child: Text(
-                                  sub.language ?? sub.title ?? sub.id,
-                                  style: TextStyle(
-                                    color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
-                                    fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              );
-                            }));
-                            
-                            return items;
-                          },
-                        ),
-                      if (_availableQualities.length > 1)
-                        PopupMenuButton<dynamic>(
-                          icon: const Icon(Icons.settings, color: Colors.white),
-                          color: Colors.grey[900],
+                  child: PopupMenuButton<dynamic>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    color: Colors.grey[900],
                     onSelected: (value) {
                       if (value == 'sub') {
                         if (_isDub) {
@@ -498,12 +455,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         }
                       } else if (value is Map<String, dynamic>) {
                         _changeQuality(value);
+                      } else if (value is SubtitleTrack) {
+                        _changeSubtitle(value);
                       }
                     },
                     itemBuilder: (context) {
                       List<PopupMenuEntry<dynamic>> items = [];
                       
-                      if (_availableQualities.isNotEmpty) {
+                      if (_availableQualities.length > 1) {
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            enabled: false,
+                            child: Text('Quality', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                          ),
+                        );
                         items.addAll(_availableQualities.map((stream) {
                           return PopupMenuItem<dynamic>(
                             value: stream,
@@ -521,11 +486,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           );
                         }));
                       }
+
+                      if (_embeddedSubtitles.isNotEmpty) {
+                        if (items.isNotEmpty) {
+                          items.add(const PopupMenuDivider());
+                        }
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            enabled: false,
+                            child: Text('Subtitles (CC)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                          ),
+                        );
+                        
+                        items.add(
+                          PopupMenuItem<dynamic>(
+                            value: SubtitleTrack.no(),
+                            child: Text(
+                              'Off',
+                              style: TextStyle(
+                                color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
+                                fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        );
+
+                        items.addAll(_embeddedSubtitles.map((sub) {
+                          return PopupMenuItem<dynamic>(
+                            value: sub,
+                            child: Text(
+                              sub.language ?? sub.title ?? sub.id,
+                              style: TextStyle(
+                                color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
+                                fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          );
+                        }));
+                      }
+                      
                       return items;
                     },
                   ),
-                ],
-              ),
                 ),
               ),
           ],
