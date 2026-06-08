@@ -57,7 +57,7 @@ class StreamingAggregatorService {
     try {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$kuudereApiUrl/api/v1/search?query=$query');
-      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 15));
+      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 60));
 
       if (searchRes.statusCode == 200) {
         final data = json.decode(searchRes.body);
@@ -70,7 +70,7 @@ class StreamingAggregatorService {
 
         if (animeId != null) {
           final epUrl = Uri.parse('$kuudereApiUrl/api/v1/episodes/$animeId');
-          final epRes = await http.get(epUrl).timeout(const Duration(seconds: 15));
+          final epRes = await http.get(epUrl).timeout(const Duration(seconds: 60));
           
           if (epRes.statusCode == 200) {
             final epDataRaw = json.decode(epRes.body);
@@ -79,7 +79,7 @@ class StreamingAggregatorService {
             final targetEpId = epData.firstWhere((e) => e['number'] == ep, orElse: () => epData[0])['id'];
             
             final streamUrl = Uri.parse('$kuudereApiUrl/api/v1/sources?id=$targetEpId');
-            final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 15));
+            final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 60));
             if (streamRes.statusCode == 200) {
               final streamData = json.decode(streamRes.body);
               final sources = streamData['data'] ?? streamData;

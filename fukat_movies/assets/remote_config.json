@@ -1,6 +1,11 @@
 {
   "active_providers": [
     {
+      "name": "Kuudere API (Native)",
+      "engine": "native_kuudere",
+      "id_type": "tmdb"
+    },
+    {
       "name": "VidSrcMe RU",
       "id_type": "imdb",
       "format_style": "query",
@@ -44,7 +49,7 @@
       "movie_url": "https://www.vidfast.net/movie/",
       "tv_url": "https://www.vidfast.net/tv/"
     },
-        {
+    {
       "name": "AutoEmbed",
       "id_type": "tmdb",
       "format_style": "dash",
