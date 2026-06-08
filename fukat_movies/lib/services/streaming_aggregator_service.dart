@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class StreamingAggregatorService {
   // Replace these with your deployed Vercel/Render URLs!
-  static String miruroApiUrl = 'https://your-miruro-api.onrender.com';
+  static String miruroApiUrl = 'https://miruro-apimsa.onrender.com';
   static String kuudereApiUrl = 'https://kuudere-apimsa.onrender.com';
   static String proxifyStreamsUrl = 'https://proxify-streamsmsa.onrender.com';
 
@@ -29,23 +29,59 @@ class StreamingAggregatorService {
 
   static Future<String?> _getMiruroStream(String title, int ep) async {
     try {
-      // Miruro-API typically uses anilist search or title search
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
-      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 15));
+      print("Aggregator: Miruro fetching $searchUrl");
+      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 60));
 
       if (searchRes.statusCode == 200) {
         final data = json.decode(searchRes.body);
-        final anilistId = data['results']?[0]?['id'];
-
+        final results = data['results'] ?? [];
+        if (results.isEmpty) return null;
+        
+        final anilistId = results[0]['id'];
+        
         if (anilistId != null) {
-          final streamUrl = Uri.parse('$miruroApiUrl/watch?id=$anilistId&ep=$ep');
-          final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 15));
-          if (streamRes.statusCode == 200) {
-            final streamData = json.decode(streamRes.body);
-            return streamData['sources']?[0]?['url']; // Returns .m3u8
+          final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
+          final epRes = await http.get(epUrl).timeout(const Duration(seconds: 60));
+          
+          if (epRes.statusCode == 200) {
+            final epData = json.decode(epRes.body);
+            final providers = epData['providers'] as Map<String, dynamic>? ?? {};
+            
+            // Iterate through providers to find the episode ID
+            String? targetWatchId;
+            
+            for (var providerName in providers.keys) {
+              final provData = providers[providerName];
+              final subEps = provData?['episodes']?['sub'] as List<dynamic>? ?? [];
+              
+              try {
+                final match = subEps.firstWhere((e) => e['number'] == ep);
+                targetWatchId = match['id'];
+                break;
+              } catch (_) {
+                // not found in this provider
+              }
+            }
+            
+            if (targetWatchId != null) {
+              // The watchId is already like 'watch/kiwi/178005/sub/animepahe-1'
+              final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
+              final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 60));
+              
+              if (streamRes.statusCode == 200) {
+                final streamData = json.decode(streamRes.body);
+                final streams = streamData['streams'] as List<dynamic>? ?? [];
+                if (streams.isNotEmpty) {
+                  return streams[0]['url'];
+                }
+              }
+            }
           }
         }
+      } else {
+        print("Miruro API Error: Status Code ${searchRes.statusCode}");
       }
     } catch (e) {
       print("Miruro API Error: $e");

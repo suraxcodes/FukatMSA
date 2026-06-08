@@ -1,6 +1,11 @@
 {
   "active_providers": [
     {
+      "name": "Miruro API (Native)",
+      "engine": "native_miruro",
+      "id_type": "tmdb"
+    },
+    {
       "name": "Kuudere API (Native)",
       "engine": "native_kuudere",
       "id_type": "tmdb"
