@@ -86,13 +86,15 @@ class StreamingAggregatorService {
                   for (var s in streams) {
                     if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
                       print("Aggregator: Miruro successfully extracted HLS url from $providerName!");
-                      return {
+                      final resultData = {
                         'url': s['url'].toString(),
                         'headers': {
                           if (s['referer'] != null) 'Referer': s['referer'].toString(),
                           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         }
                       };
+                      print("Aggregator: Returning from Miruro: $resultData");
+                      return resultData;
                     }
                   }
                   print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");
