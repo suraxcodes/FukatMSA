@@ -8,7 +8,7 @@ class StreamingAggregatorService {
   static String proxifyStreamsUrl = 'https://proxify-streamsmsa.onrender.com';
 
   /// Fetch the native streaming URL (.m3u8) using the selected next-gen API
-  static Future<String?> getNativeStreamingUrl({
+  static Future<Map<String, dynamic>?> getNativeStreamingUrl({
     required String title,
     required String engine,
     required int season,
@@ -25,7 +25,7 @@ class StreamingAggregatorService {
     return null;
   }
 
-  static Future<String?> _getMiruroStream(String title, int ep) async {
+  static Future<Map<String, dynamic>?> _getMiruroStream(String title, int ep) async {
     try {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
@@ -86,7 +86,10 @@ class StreamingAggregatorService {
                   for (var s in streams) {
                     if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
                       print("Aggregator: Miruro successfully extracted HLS url from $providerName!");
-                      return s['url'];
+                      return {
+                        'url': s['url'].toString(),
+                        if (s['referer'] != null) 'headers': {'Referer': s['referer'].toString()}
+                      };
                     }
                   }
                   print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");
@@ -113,51 +116,7 @@ class StreamingAggregatorService {
     return null;
   }
 
-  static Future<String?> _getKuudereStream(String title, int ep) async {
-    try {
-      final query = Uri.encodeComponent(title);
-      final searchUrl = Uri.parse('$kuudereApiUrl/api/v1/search?query=$query');
-      print("Aggregator: Fetching $searchUrl");
-      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 60));
-
-      print("Aggregator: Kuudere Search Response Code: ${searchRes.statusCode}");
-      print("Aggregator: Kuudere Search Response Body: ${searchRes.body}");
-
-      if (searchRes.statusCode == 200) {
-        final data = json.decode(searchRes.body);
-        final results = data['data'] ?? data;
-        final animeId = results.isNotEmpty ? results[0]['id'] : null;
-
-        if (animeId != null) {
-          final epUrl = Uri.parse('$kuudereApiUrl/api/v1/episodes/$animeId');
-          final epRes = await http.get(epUrl).timeout(const Duration(seconds: 60));
-          
-          if (epRes.statusCode == 200) {
-            final epDataRaw = json.decode(epRes.body);
-            final epData = epDataRaw['data'] ?? epDataRaw;
-            
-            final targetEpId = epData.firstWhere((e) => e['number'] == ep, orElse: () => epData[0])['id'];
-            
-            final streamUrl = Uri.parse('$kuudereApiUrl/api/v1/sources?id=$targetEpId');
-            final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 60));
-            if (streamRes.statusCode == 200) {
-              final streamData = json.decode(streamRes.body);
-              final sources = streamData['data'] ?? streamData;
-              final sourceList = sources['sources'] ?? sources;
-              return sourceList[0]?['url'];
-            }
-          }
-        }
-      } else {
-        print("Kuudere API Error: Status Code ${searchRes.statusCode}");
-      }
-    } catch (e) {
-      print("Kuudere API Error: $e");
-    }
-    return null;
-  }
-
-  static Future<String?> _getProxifyStream(String title, int ep) async {
+  static Future<Map<String, dynamic>?> _getProxifyStream(String title, int ep) async {
     try {
       final query = Uri.encodeComponent(title);
       final url = Uri.parse('$proxifyStreamsUrl/stream?title=$query&ep=$ep');
@@ -165,7 +124,7 @@ class StreamingAggregatorService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['url']; // Direct stream URL returned by proxy
+        return {'url': data['url'].toString()}; // Direct stream URL returned by proxy
       }
     } catch (e) {
       print("Proxify API Error: $e");

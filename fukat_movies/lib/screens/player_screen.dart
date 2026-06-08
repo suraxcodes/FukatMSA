@@ -45,8 +45,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // Native Player State
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
+  Map<String, String>? currentHeaders;
   bool _isMappingEpisode = false;
-  String _currentEngine = "webview";
+  String _currentEngine = 'webview';
 
   @override
   void initState() {
@@ -108,6 +109,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (currentProviderIndex >= providersList.length) {
       setState(() {
         currentUrl = "";
+        currentHeaders = null;
       });
       return;
     }
@@ -119,7 +121,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _isMappingEpisode = _currentEngine.startsWith('native_');
     });
 
-    final url = await _buildPlaybackUrl(activeProvider);
+    final playbackData = await _buildPlaybackUrl(activeProvider);
 
     if (!mounted) return;
 
@@ -127,11 +129,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _isMappingEpisode = false;
     });
 
-    if (url == null) {
+    if (playbackData == null || playbackData['url'] == null) {
       _triggerFailover();
     } else {
       setState(() {
-        currentUrl = url;
+        currentUrl = playbackData['url'] as String;
+        if (playbackData['headers'] != null) {
+          currentHeaders = Map<String, String>.from(playbackData['headers'] as Map);
+        } else {
+          currentHeaders = null;
+        }
       });
       if (_isPlaying) {
         if (_currentEngine == 'webview' && webViewController != null) {
@@ -139,17 +146,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
             urlRequest: URLRequest(url: WebUri(currentUrl)),
           );
         } else if (_currentEngine.startsWith('native_')) {
-          _initializeNativePlayer(currentUrl);
+          _initializeNativePlayer(currentUrl, headers: currentHeaders);
         }
       }
     }
   }
 
-  Future<void> _initializeNativePlayer(String url) async {
+  Future<void> _initializeNativePlayer(String url, {Map<String, String>? headers}) async {
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
 
-    _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
+    _videoPlayerController = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      httpHeaders: headers ?? {},
+    );
     await _videoPlayerController!.initialize();
 
     _chewieController = ChewieController(
@@ -170,7 +180,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() {});
   }
 
-  Future<String?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
+  Future<Map<String, dynamic>?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
     final String engine = provider['engine'] ?? 'webview';
     
     if (engine.startsWith('native_')) {
@@ -202,34 +212,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     // 2. Compile URL based on Format Styles
+    String finalUrl = '';
     if (widget.isMovie) {
       if (formatStyle == 'slash' || formatStyle == 'query_mix') {
-        return '$baseUrl$targetId';
+        finalUrl = '$baseUrl$targetId';
       } else if (formatStyle == 'query') {
-        return '$baseUrl$targetId';
+        finalUrl = '$baseUrl$targetId';
       } else if (formatStyle == 'dash') {
-        return '$baseUrl$targetId';
+        finalUrl = '$baseUrl$targetId';
+      } else {
+        finalUrl = '$baseUrl$targetId'; // Fallback for movies
       }
-      return '$baseUrl$targetId'; // Fallback for movies
     } else {
       // TV Show Format Implementations
       switch (formatStyle) {
         case 'slash': // Videasy & NontonGo Style: base/tv/id/season/episode
-          return '$baseUrl$targetId/$currentSeason/$currentEpisode';
-
+          finalUrl = '$baseUrl$targetId/$currentSeason/$currentEpisode';
+          break;
         case 'query': // VidSrcMe RU Style: base/tv?imdb=id&s=season&e=episode
-          return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
-
+          finalUrl = '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+          break;
         case 'query_mix': // 2Embed Style: base/id&s=season&e=episode
-          return '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
-
+          finalUrl = '$baseUrl$targetId&s=$currentSeason&e=$currentEpisode';
+          break;
         case 'dash': // AutoEmbed Style: base/id-season-episode
-          return '$baseUrl$targetId-$currentSeason-$currentEpisode';
-
+          finalUrl = '$baseUrl$targetId-$currentSeason-$currentEpisode';
+          break;
         default:
-          return '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
+          finalUrl = '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
       }
     }
+    return {'url': finalUrl};
   }
 
   void _startPlayback() {
