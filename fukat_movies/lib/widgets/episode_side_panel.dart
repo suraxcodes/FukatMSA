@@ -9,6 +9,9 @@ class EpisodeSidePanel extends StatefulWidget {
   final String currentEpisode;
   final void Function(String season, String episode) onEpisodeSelected;
   final List<String> seasons;
+  final bool isDub;
+  final bool hasDub;
+  final ValueChanged<bool> onAudioChanged;
 
   const EpisodeSidePanel({
     Key? key,
@@ -17,6 +20,9 @@ class EpisodeSidePanel extends StatefulWidget {
     required this.currentEpisode,
     required this.onEpisodeSelected,
     required this.seasons,
+    this.isDub = false,
+    this.hasDub = false,
+    required this.onAudioChanged,
   }) : super(key: key);
 
   @override
@@ -66,10 +72,20 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
               // Placeholder Sub & Dub dropdown
               Expanded(
                 flex: 2,
-                child: _buildDarkDropdown(
-                  value: 'Sub & Dub',
-                  items: const ['Sub & Dub', 'Sub', 'Dub'],
-                  onChanged: (val) {},
+                child: widget.hasDub ? _buildDarkDropdown(
+                  value: widget.isDub ? 'Dub' : 'Sub',
+                  items: const ['Sub', 'Dub'],
+                  onChanged: (val) {
+                    if (val == 'Dub' && !widget.isDub) {
+                      widget.onAudioChanged(true);
+                    } else if (val == 'Sub' && widget.isDub) {
+                      widget.onAudioChanged(false);
+                    }
+                  },
+                ) : Container(
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: const Text('Sub', style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               ),
               const SizedBox(width: 8),

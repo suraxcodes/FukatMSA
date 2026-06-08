@@ -450,48 +450,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           );
                         }));
                       }
-
-                      if (_hasDubAvailable) {
-                        if (items.isNotEmpty) {
-                          items.add(const PopupMenuDivider(height: 10));
-                        }
-                        items.add(
-                          PopupMenuItem<dynamic>(
-                            value: 'sub',
-                            child: Row(
-                              children: [
-                                Icon(Icons.subtitles, size: 18, color: !_isDub ? Colors.redAccent : Colors.white70),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "Subbed",
-                                  style: TextStyle(
-                                    color: !_isDub ? Colors.redAccent : Colors.white,
-                                    fontWeight: !_isDub ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                        items.add(
-                          PopupMenuItem<dynamic>(
-                            value: 'dub',
-                            child: Row(
-                              children: [
-                                Icon(Icons.mic, size: 18, color: _isDub ? Colors.redAccent : Colors.white70),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "Dubbed",
-                                  style: TextStyle(
-                                    color: _isDub ? Colors.redAccent : Colors.white,
-                                    fontWeight: _isDub ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
                       return items;
                     },
                   ),
@@ -702,6 +660,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             _startPlayback();
                           });
                         },
+                        isDub: _isDub,
+                        hasDub: _hasDubAvailable,
+                        onAudioChanged: (isDub) {
+                          if (_isDub != isDub) {
+                            setState(() {
+                              _isDub = isDub;
+                            });
+                            _preparePlaybackUrl();
+                          }
+                        },
                       ),
                     ),
                 ],
@@ -733,6 +701,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           _preparePlaybackUrl().then((_) {
                             _startPlayback();
                           });
+                        },
+                        isDub: _isDub,
+                        hasDub: _hasDubAvailable,
+                        onAudioChanged: (isDub) {
+                          if (_isDub != isDub) {
+                            setState(() {
+                              _isDub = isDub;
+                            });
+                            _preparePlaybackUrl();
+                          }
                         },
                       ),
                     ),
