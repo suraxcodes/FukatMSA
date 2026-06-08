@@ -47,7 +47,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoController? _videoController;
   Map<String, String>? currentHeaders;
   List<Map<String, dynamic>> _availableQualities = [];
+  List<Map<String, dynamic>> _availableSubtitles = [];
   String? _selectedQuality;
+  String _selectedSubtitleLang = 'Off';
   bool _isDub = false;
   bool _hasDubAvailable = false;
   bool _isMappingEpisode = false;
@@ -157,6 +159,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _selectedQuality = null;
         }
 
+        if (playbackData['subtitles'] != null) {
+          try {
+            _availableSubtitles = List<Map<String, dynamic>>.from(playbackData['subtitles']);
+          } catch (e) {
+            print("Error parsing subtitles: $e");
+          }
+        } else {
+          _availableSubtitles = [];
+        }
+
+        _selectedSubtitleLang = 'Off'; // Reset subtitle on new video load
         _hasDubAvailable = playbackData['hasDub'] == true;
       });
       if (_isPlaying) {
@@ -210,6 +223,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       play: true,
     );
     await _mediaPlayer!.seek(position);
+  }
+
+  void _changeSubtitle(String? subtitleUrl, String lang) {
+    if (_mediaPlayer == null) return;
+    
+    setState(() {
+      _selectedSubtitleLang = lang;
+    });
+
+    if (subtitleUrl == null) {
+      _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+    } else {
+      _mediaPlayer!.setSubtitleTrack(SubtitleTrack.uri(subtitleUrl));
+    }
   }
 
   Future<Map<String, dynamic>?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
@@ -406,14 +433,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 controls: MaterialVideoControls,
               ),
             ),
-            if (_availableQualities.length > 1)
+            if (_availableQualities.length > 1 || _availableSubtitles.isNotEmpty)
               Positioned(
                 top: 16,
                 right: 16,
                 child: SafeArea(
-                  child: PopupMenuButton<dynamic>(
-                    icon: const Icon(Icons.settings, color: Colors.white),
-                    color: Colors.grey[900],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_availableSubtitles.isNotEmpty)
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.closed_caption, color: Colors.white),
+                          color: Colors.grey[900],
+                          onSelected: (lang) {
+                            if (lang == 'Off') {
+                              _changeSubtitle(null, 'Off');
+                            } else {
+                              final sub = _availableSubtitles.firstWhere((s) => s['lang'] == lang);
+                              _changeSubtitle(sub['url'], lang);
+                            }
+                          },
+                          itemBuilder: (context) {
+                            List<PopupMenuEntry<String>> items = [];
+                            
+                            items.add(
+                              PopupMenuItem<String>(
+                                value: 'Off',
+                                child: Text(
+                                  'Off',
+                                  style: TextStyle(
+                                    color: _selectedSubtitleLang == 'Off' ? Colors.redAccent : Colors.white,
+                                    fontWeight: _selectedSubtitleLang == 'Off' ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            );
+
+                            items.addAll(_availableSubtitles.map((sub) {
+                              return PopupMenuItem<String>(
+                                value: sub['lang'],
+                                child: Text(
+                                  sub['lang'] ?? 'Unknown',
+                                  style: TextStyle(
+                                    color: _selectedSubtitleLang == sub['lang'] ? Colors.redAccent : Colors.white,
+                                    fontWeight: _selectedSubtitleLang == sub['lang'] ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              );
+                            }));
+                            
+                            return items;
+                          },
+                        ),
+                      if (_availableQualities.length > 1)
+                        PopupMenuButton<dynamic>(
+                          icon: const Icon(Icons.settings, color: Colors.white),
+                          color: Colors.grey[900],
                     onSelected: (value) {
                       if (value == 'sub') {
                         if (_isDub) {
@@ -453,6 +528,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       return items;
                     },
                   ),
+                ],
+              ),
                 ),
               ),
           ],

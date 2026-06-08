@@ -101,6 +101,19 @@ class StreamingAggregatorService {
                     }
                   }
                   
+                  List<Map<String, dynamic>> extractedSubtitles = [];
+                  if (streamData['subtitles'] != null) {
+                    final subs = streamData['subtitles'] as List<dynamic>;
+                    for (var sub in subs) {
+                      if (sub['url'] != null) {
+                        extractedSubtitles.add({
+                          'url': sub['url'].toString(),
+                          'lang': sub['lang']?.toString() ?? 'Unknown',
+                        });
+                      }
+                    }
+                  }
+                  
                   if (extractedStreams.isNotEmpty) {
                     print("Aggregator: Miruro successfully extracted HLS urls from $providerName!");
                     final resultData = {
@@ -109,8 +122,9 @@ class StreamingAggregatorService {
                       'headers': extractedStreams.first['headers'], // Fallback legacy
                       'hasSub': hasSub,
                       'hasDub': hasDub,
+                      'subtitles': extractedSubtitles,
                     };
-                    print("Aggregator: Returning from Miruro: ${extractedStreams.length} qualities found. Dub: $hasDub, Sub: $hasSub");
+                    print("Aggregator: Returning from Miruro: ${extractedStreams.length} qualities, ${extractedSubtitles.length} subtitles found. Dub: $hasDub, Sub: $hasSub");
                     return resultData;
                   }
                   print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");
