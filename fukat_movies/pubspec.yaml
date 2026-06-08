@@ -43,8 +43,9 @@ dependencies:
   cached_network_image: ^3.2.3
   supabase_flutter: ^2.12.4
   mobile_scanner: ^7.2.0
-  video_player: ^2.11.1
-  chewie: ^1.14.1
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
 dev_dependencies:
   flutter_test:

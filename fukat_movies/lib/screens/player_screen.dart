@@ -2,8 +2,8 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
 import '../services/ad_block_service.dart';
@@ -43,9 +43,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final GlobalKey _playerKey = GlobalKey();
 
   // Native Player State
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
+  Player? _mediaPlayer;
+  VideoController? _videoController;
   Map<String, String>? currentHeaders;
+  List<Map<String, dynamic>> _availableQualities = [];
+  String? _selectedQuality;
   bool _isMappingEpisode = false;
   String _currentEngine = 'webview';
 
@@ -57,8 +59,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+    _mediaPlayer?.dispose();
     super.dispose();
   }
 
@@ -139,6 +140,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         } else {
           currentHeaders = null;
         }
+
+        if (playbackData['streams'] != null) {
+          try {
+            _availableQualities = List<Map<String, dynamic>>.from(playbackData['streams']);
+            if (_availableQualities.isNotEmpty) {
+              _selectedQuality = _availableQualities.first['quality']?.toString();
+            }
+          } catch (e) {
+            print("Error parsing streams: $e");
+          }
+        } else {
+          _availableQualities = [];
+          _selectedQuality = null;
+        }
       });
       if (_isPlaying) {
         if (_currentEngine == 'webview' && webViewController != null) {
@@ -153,34 +168,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _initializeNativePlayer(String url, {Map<String, String>? headers}) async {
-    print("PlayerScreen: Initializing native player with URL: $url");
-    print("PlayerScreen: Passing HTTP Headers to VideoPlayer: $headers");
+    print("PlayerScreen: Initializing MediaKit player with URL: $url");
     
-    _chewieController?.dispose();
-    _videoPlayerController?.dispose();
+    _mediaPlayer?.dispose();
 
-    _videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: headers ?? {},
+    _mediaPlayer = Player(
+      configuration: const PlayerConfiguration(
+        bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
+      ),
     );
-    await _videoPlayerController!.initialize();
 
-    _chewieController = ChewieController(
-      videoPlayerController: _videoPlayerController!,
-      autoPlay: true,
-      looping: false,
-      aspectRatio: 16 / 9,
-      errorBuilder: (context, errorMessage) {
-        return Center(
-          child: Text(
-            errorMessage,
-            style: const TextStyle(color: Colors.white),
-          ),
-        );
-      },
+    _videoController = VideoController(_mediaPlayer!);
+
+    await _mediaPlayer!.open(
+      Media(url, httpHeaders: headers),
+      play: true,
     );
 
     setState(() {});
+  }
+
+  void _changeQuality(Map<String, dynamic> stream) async {
+    if (_mediaPlayer == null) return;
+    
+    final position = _mediaPlayer!.state.position;
+    
+    setState(() {
+      _selectedQuality = stream['quality'];
+      currentUrl = stream['url'];
+      if (stream['headers'] != null) {
+        currentHeaders = Map<String, String>.from(stream['headers']);
+      }
+    });
+
+    await _mediaPlayer!.open(
+      Media(currentUrl, httpHeaders: currentHeaders),
+      play: true,
+    );
+    await _mediaPlayer!.seek(position);
   }
 
   Future<Map<String, dynamic>?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
@@ -366,12 +391,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (_currentEngine.startsWith('native_')) {
-      if (_chewieController != null && _videoPlayerController != null && _videoPlayerController!.value.isInitialized) {
-        return Container(
-          color: Colors.black,
-          child: Chewie(
-            controller: _chewieController!,
-          ),
+      if (_videoController != null) {
+        return Stack(
+          children: [
+            Container(
+              color: Colors.black,
+              child: Video(
+                controller: _videoController!,
+                controls: MaterialVideoControls,
+              ),
+            ),
+            if (_availableQualities.length > 1)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: SafeArea(
+                  child: PopupMenuButton<Map<String, dynamic>>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    color: Colors.grey[900],
+                    onSelected: _changeQuality,
+                    itemBuilder: (context) {
+                      return _availableQualities.map((stream) {
+                        return PopupMenuItem<Map<String, dynamic>>(
+                          value: stream,
+                          child: Text(
+                            stream['quality'] ?? 'Auto',
+                            style: TextStyle(
+                              color: _selectedQuality == stream['quality']
+                                  ? Colors.redAccent
+                                  : Colors.white,
+                              fontWeight: _selectedQuality == stream['quality']
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+              ),
+          ],
         );
       } else {
         return Center(

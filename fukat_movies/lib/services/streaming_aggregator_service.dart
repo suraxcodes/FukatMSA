@@ -82,20 +82,31 @@ class StreamingAggregatorService {
                   final streamData = json.decode(streamRes.body);
                   final streams = streamData['streams'] as List<dynamic>? ?? [];
                   
+                  List<Map<String, dynamic>> extractedStreams = [];
+
                   // Filter for valid HLS streams
                   for (var s in streams) {
                     if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
-                      print("Aggregator: Miruro successfully extracted HLS url from $providerName!");
-                      final resultData = {
+                      extractedStreams.add({
+                        'quality': s['quality']?.toString() ?? 'Auto',
                         'url': s['url'].toString(),
                         'headers': {
                           if (s['referer'] != null) 'Referer': s['referer'].toString(),
                           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         }
-                      };
-                      print("Aggregator: Returning from Miruro: $resultData");
-                      return resultData;
+                      });
                     }
+                  }
+                  
+                  if (extractedStreams.isNotEmpty) {
+                    print("Aggregator: Miruro successfully extracted HLS urls from $providerName!");
+                    final resultData = {
+                      'streams': extractedStreams, // We return multiple streams now!
+                      'url': extractedStreams.first['url'], // Fallback legacy
+                      'headers': extractedStreams.first['headers'], // Fallback legacy
+                    };
+                    print("Aggregator: Returning from Miruro: ${extractedStreams.length} qualities found.");
+                    return resultData;
                   }
                   print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");
                 } else {

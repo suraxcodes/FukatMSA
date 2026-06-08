@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:media_kit/media_kit.dart';
 import 'services/remote_config_service.dart';
 import 'services/supabase_auth_service.dart';
 import 'screens/home_screen.dart';
@@ -10,6 +11,7 @@ import 'screens/auth_screen.dart';
 Future<void> main() async {
   // 1. Ensure structural widget engine bindings are completely ready
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
 
   bool initializationSuccess = false;
 
