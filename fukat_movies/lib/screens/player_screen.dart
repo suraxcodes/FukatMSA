@@ -445,7 +445,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 controls: MaterialVideoControls,
               ),
             ),
-            if (_availableQualities.length > 1 || _embeddedSubtitles.isNotEmpty || _apiSubtitles.isNotEmpty)
+            if (_availableQualities.isNotEmpty)
               Positioned(
                 top: 16,
                 right: 16,
@@ -476,7 +476,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     itemBuilder: (context) {
                       List<PopupMenuEntry<dynamic>> items = [];
                       
-                      if (_availableQualities.length > 1) {
+                      if (_availableQualities.isNotEmpty) {
                         items.add(
                           const PopupMenuItem<dynamic>(
                             enabled: false,
@@ -499,12 +499,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                           );
                         }));
-                      }
 
-                      if (_embeddedSubtitles.isNotEmpty || _apiSubtitles.isNotEmpty) {
-                        if (items.isNotEmpty) {
-                          items.add(const PopupMenuDivider());
-                        }
+                        items.add(const PopupMenuDivider());
+
                         items.add(
                           const PopupMenuItem<dynamic>(
                             enabled: false,
