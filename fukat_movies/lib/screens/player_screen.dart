@@ -47,9 +47,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoController? _videoController;
   Map<String, String>? currentHeaders;
   List<Map<String, dynamic>> _availableQualities = [];
-  List<Map<String, dynamic>> _availableSubtitles = [];
+  List<SubtitleTrack> _embeddedSubtitles = [];
   String? _selectedQuality;
-  String _selectedSubtitleLang = 'Off';
+  SubtitleTrack _selectedSubtitleTrack = SubtitleTrack.no();
   bool _isDub = false;
   bool _hasDubAvailable = false;
   bool _isMappingEpisode = false;
@@ -159,17 +159,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _selectedQuality = null;
         }
 
-        if (playbackData['subtitles'] != null) {
-          try {
-            _availableSubtitles = List<Map<String, dynamic>>.from(playbackData['subtitles']);
-          } catch (e) {
-            print("Error parsing subtitles: $e");
-          }
-        } else {
-          _availableSubtitles = [];
-        }
-
-        _selectedSubtitleLang = 'Off'; // Reset subtitle on new video load
+        _selectedSubtitleTrack = SubtitleTrack.no(); // Reset subtitle on new video load
         _hasDubAvailable = playbackData['hasDub'] == true;
       });
       if (_isPlaying) {
@@ -196,6 +186,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     _videoController = VideoController(_mediaPlayer!);
+
+    _mediaPlayer!.stream.tracks.listen((tracks) {
+      if (mounted) {
+        setState(() {
+          // Filter out the 'no()' track if it's in the list, we add it manually
+          _embeddedSubtitles = tracks.subtitle.where((t) => t.id != 'no' && t.id != 'auto').toList();
+        });
+      }
+    });
 
     await _mediaPlayer!.open(
       Media(url, httpHeaders: headers),
@@ -225,18 +224,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _mediaPlayer!.seek(position);
   }
 
-  void _changeSubtitle(String? subtitleUrl, String lang) {
+  void _changeSubtitle(SubtitleTrack track) {
     if (_mediaPlayer == null) return;
     
     setState(() {
-      _selectedSubtitleLang = lang;
+      _selectedSubtitleTrack = track;
     });
 
-    if (subtitleUrl == null) {
-      _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
-    } else {
-      _mediaPlayer!.setSubtitleTrack(SubtitleTrack.uri(subtitleUrl));
-    }
+    _mediaPlayer!.setSubtitleTrack(track);
   }
 
   Future<Map<String, dynamic>?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
@@ -433,7 +428,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 controls: MaterialVideoControls,
               ),
             ),
-            if (_availableQualities.length > 1 || _availableSubtitles.isNotEmpty)
+            if (_availableQualities.length > 1 || _embeddedSubtitles.isNotEmpty)
               Positioned(
                 top: 16,
                 right: 16,
@@ -441,42 +436,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (_availableSubtitles.isNotEmpty)
-                        PopupMenuButton<String>(
+                      if (_embeddedSubtitles.isNotEmpty)
+                        PopupMenuButton<SubtitleTrack>(
                           icon: const Icon(Icons.closed_caption, color: Colors.white),
                           color: Colors.grey[900],
-                          onSelected: (lang) {
-                            if (lang == 'Off') {
-                              _changeSubtitle(null, 'Off');
-                            } else {
-                              final sub = _availableSubtitles.firstWhere((s) => s['lang'] == lang);
-                              _changeSubtitle(sub['url'], lang);
-                            }
+                          onSelected: (track) {
+                            _changeSubtitle(track);
                           },
                           itemBuilder: (context) {
-                            List<PopupMenuEntry<String>> items = [];
+                            List<PopupMenuEntry<SubtitleTrack>> items = [];
                             
                             items.add(
-                              PopupMenuItem<String>(
-                                value: 'Off',
+                              PopupMenuItem<SubtitleTrack>(
+                                value: SubtitleTrack.no(),
                                 child: Text(
                                   'Off',
                                   style: TextStyle(
-                                    color: _selectedSubtitleLang == 'Off' ? Colors.redAccent : Colors.white,
-                                    fontWeight: _selectedSubtitleLang == 'Off' ? FontWeight.bold : FontWeight.normal,
+                                    color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
+                                    fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
                                   ),
                                 ),
                               ),
                             );
 
-                            items.addAll(_availableSubtitles.map((sub) {
-                              return PopupMenuItem<String>(
-                                value: sub['lang'],
+                            items.addAll(_embeddedSubtitles.map((sub) {
+                              return PopupMenuItem<SubtitleTrack>(
+                                value: sub,
                                 child: Text(
-                                  sub['lang'] ?? 'Unknown',
+                                  sub.language ?? sub.title ?? sub.id,
                                   style: TextStyle(
-                                    color: _selectedSubtitleLang == sub['lang'] ? Colors.redAccent : Colors.white,
-                                    fontWeight: _selectedSubtitleLang == sub['lang'] ? FontWeight.bold : FontWeight.normal,
+                                    color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
+                                    fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
                                   ),
                                 ),
                               );
