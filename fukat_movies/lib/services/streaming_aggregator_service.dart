@@ -56,47 +56,52 @@ class StreamingAggregatorService {
             final epData = json.decode(epRes.body);
             final providers = epData['providers'] as Map<String, dynamic>? ?? {};
             
-            // Iterate through providers to find the episode ID
-            String? targetWatchId;
-            
+            // Try each provider until we get a valid HLS stream
             for (var providerName in providers.keys) {
               final provData = providers[providerName];
               final subEps = provData?['episodes']?['sub'] as List<dynamic>? ?? [];
               
+              String? targetWatchId;
               try {
                 final match = subEps.firstWhere((e) => e['number'] == ep);
                 targetWatchId = match['id'];
-                print("Aggregator: Miruro found match in provider $providerName -> $targetWatchId");
-                break;
               } catch (_) {
                 // not found in this provider
+                continue;
+              }
+              
+              print("Aggregator: Miruro found match in provider $providerName -> $targetWatchId");
+              
+              // Fetch stream for this specific provider's episode
+              final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
+              print("Aggregator: Miruro fetching stream from: $streamUrl");
+              
+              try {
+                final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 20));
+                print("Aggregator: Miruro stream status ($providerName): ${streamRes.statusCode}");
+                
+                if (streamRes.statusCode == 200) {
+                  final streamData = json.decode(streamRes.body);
+                  final streams = streamData['streams'] as List<dynamic>? ?? [];
+                  
+                  // Filter for valid HLS streams
+                  for (var s in streams) {
+                    if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
+                      print("Aggregator: Miruro successfully extracted HLS url from $providerName!");
+                      return s['url'];
+                    }
+                  }
+                  print("Aggregator: Miruro no valid HLS streams found in $providerName, trying next...");
+                } else {
+                  print("Aggregator: Miruro stream body ($providerName): ${streamRes.body}");
+                }
+              } catch (e) {
+                print("Aggregator: Miruro error fetching stream from $providerName: $e");
               }
             }
             
-            if (targetWatchId != null) {
-              final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
-              print("Aggregator: Miruro fetching stream from: $streamUrl");
-              final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
-              
-              print("Aggregator: Miruro stream status: ${streamRes.statusCode}");
-              if (streamRes.statusCode == 200) {
-                final streamData = json.decode(streamRes.body);
-                final streams = streamData['streams'] as List<dynamic>? ?? [];
-                
-                // Filter for valid HLS streams
-                for (var s in streams) {
-                  if (s['type'] == 'hls' && s['url'] != null && s['url'].toString().isNotEmpty) {
-                    print("Aggregator: Miruro successfully extracted HLS url!");
-                    return s['url'];
-                  }
-                }
-                print("Aggregator: Miruro no valid HLS streams found in response.");
-              } else {
-                print("Aggregator: Miruro stream body: ${streamRes.body}");
-              }
-            } else {
-              print("Aggregator: Miruro could not find episode $ep in any provider.");
-            }
+            print("Aggregator: Miruro exhausted all providers, no valid HLS stream found.");
+            
           } else {
              print("Aggregator: Miruro episodes body: ${epRes.body}");
           }
