@@ -57,14 +57,14 @@ class StreamingAggregatorService {
     try {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$kuudereApiUrl/api/v1/search?query=$query');
+      print("Aggregator: Fetching $searchUrl");
       final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 60));
+
+      print("Aggregator: Kuudere Search Response Code: ${searchRes.statusCode}");
+      print("Aggregator: Kuudere Search Response Body: ${searchRes.body}");
 
       if (searchRes.statusCode == 200) {
         final data = json.decode(searchRes.body);
-        // data could be directly the array, but Kuudere uses a standard success format maybe?
-        // Wait, kuuderSearch returns an array of results. In v1.routes.ts: `createSuccessResponse(results)`
-        // createSuccessResponse usually wraps in { success: true, data: results }
-        // Let's assume `data['data'][0]['id']` or fallback to `data[0]?['id']`
         final results = data['data'] ?? data;
         final animeId = results.isNotEmpty ? results[0]['id'] : null;
 
@@ -83,12 +83,13 @@ class StreamingAggregatorService {
             if (streamRes.statusCode == 200) {
               final streamData = json.decode(streamRes.body);
               final sources = streamData['data'] ?? streamData;
-              // Sources is usually { sources: [{url: "..."}] } or [{url: "..."}]
               final sourceList = sources['sources'] ?? sources;
               return sourceList[0]?['url'];
             }
           }
         }
+      } else {
+        print("Kuudere API Error: Status Code ${searchRes.statusCode}");
       }
     } catch (e) {
       print("Kuudere API Error: $e");
