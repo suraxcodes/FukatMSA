@@ -32,7 +32,7 @@ class StreamingAggregatorService {
       final query = Uri.encodeComponent(title);
       final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
       print("Aggregator: Miruro fetching $searchUrl");
-      final searchRes = await http.get(searchUrl).timeout(const Duration(seconds: 60));
+      final searchRes = await http.get(searchUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
 
       if (searchRes.statusCode == 200) {
         final data = json.decode(searchRes.body);
@@ -43,7 +43,7 @@ class StreamingAggregatorService {
         
         if (anilistId != null) {
           final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
-          final epRes = await http.get(epUrl).timeout(const Duration(seconds: 60));
+          final epRes = await http.get(epUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
           
           if (epRes.statusCode == 200) {
             final epData = json.decode(epRes.body);
@@ -68,7 +68,7 @@ class StreamingAggregatorService {
             if (targetWatchId != null) {
               // The watchId is already like 'watch/kiwi/178005/sub/animepahe-1'
               final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
-              final streamRes = await http.get(streamUrl).timeout(const Duration(seconds: 60));
+              final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
               
               if (streamRes.statusCode == 200) {
                 final streamData = json.decode(streamRes.body);
