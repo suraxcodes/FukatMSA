@@ -201,6 +201,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       play: true,
     );
 
+    // Enforce subtitles off by default
+    _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+
     setState(() {});
   }
 
@@ -221,6 +224,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Media(currentUrl, httpHeaders: currentHeaders),
       play: true,
     );
+    // Restore the selected subtitle track when quality changes
+    _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
+    
     await _mediaPlayer!.seek(position);
   }
 
