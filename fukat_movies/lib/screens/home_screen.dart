@@ -298,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (_trendingMovies.isNotEmpty) 
                     _buildMediaRow("Trending Movies", _trendingMovies, true),
                   _buildMediaRow("Trending TV Shows", _trendingTv, false),
-                  _buildMediaRow("Trending Anime", _trendingAnime, true),
+                  _buildMediaRow("Trending Anime", _trendingAnime, false),
                 ],
               ),
             ),
