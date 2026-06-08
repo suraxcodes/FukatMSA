@@ -48,6 +48,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map<String, String>? currentHeaders;
   List<Map<String, dynamic>> _availableQualities = [];
   List<SubtitleTrack> _embeddedSubtitles = [];
+  List<Map<String, dynamic>> _apiSubtitles = [];
   String? _selectedQuality;
   SubtitleTrack _selectedSubtitleTrack = SubtitleTrack.no();
   bool _isDub = false;
@@ -157,6 +158,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         } else {
           _availableQualities = [];
           _selectedQuality = null;
+        }
+
+        if (playbackData['subtitles'] != null) {
+          try {
+            _apiSubtitles = List<Map<String, dynamic>>.from(playbackData['subtitles']);
+          } catch (e) {
+            print("Error parsing API subtitles: $e");
+          }
+        } else {
+          _apiSubtitles = [];
         }
 
         _selectedSubtitleTrack = SubtitleTrack.no(); // Reset subtitle on new video load
@@ -457,6 +468,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         _changeQuality(value);
                       } else if (value is SubtitleTrack) {
                         _changeSubtitle(value);
+                      } else if (value is String && value.startsWith('api_sub_')) {
+                        final url = value.replaceFirst('api_sub_', '');
+                        _changeSubtitle(SubtitleTrack.uri(url));
                       }
                     },
                     itemBuilder: (context) {
@@ -487,7 +501,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         }));
                       }
 
-                      if (_embeddedSubtitles.isNotEmpty) {
+                      if (_embeddedSubtitles.isNotEmpty || _apiSubtitles.isNotEmpty) {
                         if (items.isNotEmpty) {
                           items.add(const PopupMenuDivider());
                         }
@@ -511,6 +525,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         );
 
+                        // Add API Subtitles
+                        items.addAll(_apiSubtitles.map((sub) {
+                          // Note: We skip highlighting the selected API subtitle track here because 
+                          // media_kit's track id structure for URIs is an internal implementation detail.
+                          return PopupMenuItem<dynamic>(
+                            value: 'api_sub_${sub['url']}',
+                            child: Text(
+                              sub['lang'] ?? 'Unknown',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.normal,
+                              ),
+                            ),
+                          );
+                        }));
+
+                        // Add Embedded Subtitles
                         items.addAll(_embeddedSubtitles.map((sub) {
                           return PopupMenuItem<dynamic>(
                             value: sub,
