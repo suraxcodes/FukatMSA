@@ -411,62 +411,89 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 top: 16,
                 right: 16,
                 child: SafeArea(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_hasDubAvailable)
-                        Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[900]?.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: ToggleButtons(
-                            constraints: const BoxConstraints(minHeight: 36, minWidth: 50),
-                            isSelected: [!_isDub, _isDub],
-                            onPressed: (index) {
-                              final newIsDub = index == 1;
-                              if (_isDub != newIsDub) {
-                                setState(() {
-                                  _isDub = newIsDub;
-                                });
-                                _preparePlaybackUrl();
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(8),
-                            selectedColor: Colors.white,
-                            fillColor: Colors.redAccent,
-                            color: Colors.white70,
-                            children: const [
-                              Text("SUB", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                              Text("DUB", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      PopupMenuButton<Map<String, dynamic>>(
-                        icon: const Icon(Icons.settings, color: Colors.white),
-                        color: Colors.grey[900],
-                    onSelected: _changeQuality,
+                  child: PopupMenuButton<dynamic>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    color: Colors.grey[900],
+                    onSelected: (value) {
+                      if (value == 'sub') {
+                        if (_isDub) {
+                          setState(() { _isDub = false; });
+                          _preparePlaybackUrl();
+                        }
+                      } else if (value == 'dub') {
+                        if (!_isDub) {
+                          setState(() { _isDub = true; });
+                          _preparePlaybackUrl();
+                        }
+                      } else if (value is Map<String, dynamic>) {
+                        _changeQuality(value);
+                      }
+                    },
                     itemBuilder: (context) {
-                      return _availableQualities.map((stream) {
-                        return PopupMenuItem<Map<String, dynamic>>(
-                          value: stream,
-                          child: Text(
-                            stream['quality'] ?? 'Auto',
-                            style: TextStyle(
-                              color: _selectedQuality == stream['quality']
-                                  ? Colors.redAccent
-                                  : Colors.white,
-                              fontWeight: _selectedQuality == stream['quality']
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
+                      List<PopupMenuEntry<dynamic>> items = [];
+                      
+                      if (_availableQualities.isNotEmpty) {
+                        items.addAll(_availableQualities.map((stream) {
+                          return PopupMenuItem<dynamic>(
+                            value: stream,
+                            child: Text(
+                              stream['quality'] ?? 'Auto',
+                              style: TextStyle(
+                                color: _selectedQuality == stream['quality']
+                                    ? Colors.redAccent
+                                    : Colors.white,
+                                fontWeight: _selectedQuality == stream['quality']
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          );
+                        }));
+                      }
+
+                      if (_hasDubAvailable) {
+                        if (items.isNotEmpty) {
+                          items.add(const PopupMenuDivider(height: 10));
+                        }
+                        items.add(
+                          PopupMenuItem<dynamic>(
+                            value: 'sub',
+                            child: Row(
+                              children: [
+                                Icon(Icons.subtitles, size: 18, color: !_isDub ? Colors.redAccent : Colors.white70),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "Subbed",
+                                  style: TextStyle(
+                                    color: !_isDub ? Colors.redAccent : Colors.white,
+                                    fontWeight: !_isDub ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
-                      }).toList();
+                        items.add(
+                          PopupMenuItem<dynamic>(
+                            value: 'dub',
+                            child: Row(
+                              children: [
+                                Icon(Icons.mic, size: 18, color: _isDub ? Colors.redAccent : Colors.white70),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "Dubbed",
+                                  style: TextStyle(
+                                    color: _isDub ? Colors.redAccent : Colors.white,
+                                    fontWeight: _isDub ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return items;
                     },
-                  ),
-                    ],
                   ),
                 ),
               ),
