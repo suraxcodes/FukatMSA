@@ -88,7 +88,10 @@ class StreamingAggregatorService {
                       print("Aggregator: Miruro successfully extracted HLS url from $providerName!");
                       return {
                         'url': s['url'].toString(),
-                        if (s['referer'] != null) 'headers': {'Referer': s['referer'].toString()}
+                        'headers': {
+                          if (s['referer'] != null) 'Referer': s['referer'].toString(),
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        }
                       };
                     }
                   }
@@ -124,7 +127,12 @@ class StreamingAggregatorService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return {'url': data['url'].toString()}; // Direct stream URL returned by proxy
+        return {
+          'url': data['url'].toString(),
+          'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        }; // Direct stream URL returned by proxy
       }
     } catch (e) {
       print("Proxify API Error: $e");
