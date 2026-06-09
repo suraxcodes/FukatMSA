@@ -17,7 +17,16 @@ class RemoteConfigService {
     try {
       final customProviders = await CustomRepoService.fetchCustomProviders();
       if (customProviders != null && customProviders.isNotEmpty) {
-        _activeProviders = customProviders;
+        var custom = customProviders;
+        if (Platform.isWindows) {
+          custom = custom.where((p) {
+            final movieUrl = p['movie_url']?.toString() ?? '';
+            final tvUrl = p['tv_url']?.toString() ?? '';
+            bool isVidsrc = movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
+            return !isVidsrc;
+          }).toList();
+        }
+        _activeProviders = custom;
         print("Successfully loaded ${_activeProviders.length} providers from CUSTOM remote config.");
         return;
       }
@@ -26,7 +35,21 @@ class RemoteConfigService {
          final jsonString = await rootBundle.loadString(_assetPath);
          final data = json.decode(jsonString);
          if (data['active_providers'] != null) {
-           _activeProviders = data['active_providers'];
+           var providers = data['active_providers'] as List<dynamic>;
+           
+           if (Platform.isWindows) {
+             providers = providers.where((p) {
+               final movieUrl = p['movie_url']?.toString() ?? '';
+               final tvUrl = p['tv_url']?.toString() ?? '';
+               bool isVidsrc = movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
+               if (isVidsrc) {
+                 print("⚠️ Removing incompatible provider on Windows: ${p['name']}");
+               }
+               return !isVidsrc;
+             }).toList();
+           }
+           
+           _activeProviders = providers;
            print("✅ Loaded ${_activeProviders.length} providers from bundled asset.");
          } else {
            print('⚠️ No active_providers in asset config.');

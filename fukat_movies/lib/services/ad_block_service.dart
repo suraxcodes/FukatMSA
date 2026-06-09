@@ -88,7 +88,7 @@ class AdBlockService {
             el.style.setProperty('display', 'none', 'important');
           });
         });
-        window.open = function() { console.log('Blocked window.open'); return null; };
+        window.open = function() { console.log('Mocked popup opened'); return { closed: false, focus: function(){}, close: function(){} }; };
         window.alert = function() { console.log('Blocked alert'); return null; };
         window.confirm = function() { console.log('Blocked confirm'); return false; };
         try {

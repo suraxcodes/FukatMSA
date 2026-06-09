@@ -79,7 +79,14 @@ const targetNodes = [
       "format_style": "dash",
       "movie_url": "https://autoembed.co/movie/tmdb/",
       "tv_url": "https://autoembed.co/tv/tmdb/"
-    }
+    },
+      {
+      "name": "VidSrc Net",
+      "id_type": "imdb",
+      "format_style": "query",
+      "movie_url": "https://vidsrc.net/embed/movie?imdb=",
+      "tv_url": "https://vidsrc.net/embed/tv?imdb="
+    },
 ];
 
 const networkHeaders = {

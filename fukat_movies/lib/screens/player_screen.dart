@@ -595,7 +595,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       children: [
         // LAYER 1: Core Web Rendering Viewport
         InAppWebView(
-          key: _playerKey,
           initialUrlRequest: currentUrl.isNotEmpty
               ? URLRequest(url: WebUri(currentUrl))
               : null,
@@ -608,7 +607,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             javaScriptCanOpenWindowsAutomatically: true,
             supportMultipleWindows: true,
             userAgent:
-                "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             allowsInlineMediaPlayback: true,
             iframeAllowFullscreen: true,
             thirdPartyCookiesEnabled: true,
@@ -618,26 +617,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           initialUserScripts: UnmodifiableListView<UserScript>([
             UserScript(
-              source: "",
-              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+              source: """
+                // Prevent all forms of Main Frame redirection
+                window.onbeforeunload = function() { return "Prevent redirect"; };
+                
+                // Override location methods
+                var originalAssign = window.location.assign;
+                var originalReplace = window.location.replace;
+                window.location.assign = function(url) { console.log("Blocked assign:", url); };
+                window.location.replace = function(url) { console.log("Blocked replace:", url); };
+                
+                // Override window.open
+                window.open = function(url, name, specs) { 
+                  console.log("Mocked popup opened"); 
+                  return { closed: false, focus: function(){}, close: function(){} }; 
+                };
+              """,
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
               forMainFrameOnly: false,
             ),
           ]),
           onWebViewCreated: (controller) {
             webViewController = controller;
-          },
-          shouldOverrideUrlLoading: (controller, navigationAction) async {
-            var url = navigationAction.request.url?.toString() ?? '';
-            
-            if (navigationAction.isForMainFrame) {
-              bool blocked = await AdBlockService.isAdDomain(url);
-              if (blocked) {
-                print('Blocked navigation to ad domain: $url');
-                return NavigationActionPolicy.CANCEL;
-              }
-            }
-            
-            return NavigationActionPolicy.ALLOW;
           },
           onCreateWindow: (controller, createWindowAction) async {
             // We return true to handle the window creation, but we DON'T actually
@@ -646,7 +647,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             print("Swallowed popup window creation in background");
             return true;
           },
-
+          shouldOverrideUrlLoading: (controller, navigationAction) async {
+            var url = navigationAction.request.url?.toString() ?? '';
+            if (navigationAction.isForMainFrame) {
+              bool blocked = await AdBlockService.isAdDomain(url);
+              if (blocked) {
+                print('Blocked navigation to ad domain: $url');
+                return NavigationActionPolicy.CANCEL;
+              }
+            }
+            return NavigationActionPolicy.ALLOW;
+          },
           onLoadStop: (controller, url) async {
             if (url != null) {
               final script = await AdBlockService.getUiCleanerScript(
@@ -739,6 +750,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildPlayerSection() {
     return Container(
+      key: _playerKey,
       child: _buildVideoPlayerArea(),
     );
   }
