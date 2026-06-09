@@ -17,7 +17,7 @@ class AdBlockService {
     'ajio.com', 'myntra.com', 'flipkart.com', 'amazon.in',
     'adsterra', 'propellerads', 'infolinks', 'revenuehits',
     'awin1.com', 'admitad.com', 'cuelinks.com', 'vcommission.com',
-    'vidsrcme.ru', 'qxbroker.com', 'dafapromo.com', 'binomo.com',
+    'qxbroker.com', 'dafapromo.com', 'binomo.com',
     'olymptrade.com', '1xbet.com', 'bet365.com', 'melbet.com', 'parimatch.com',
     'iqoption.com', 'betway.com', '888casino.com', 'draftkings.com',
     'fanduel.com', 'betmgm.com', 'unibet.com', 'bovada.lv', 'betonline.ag',
@@ -64,6 +64,10 @@ class AdBlockService {
     // Check both remote config domains and our local aggressive fallback blocklist
     final allDomains = <String>{...config.domains, ..._fallbackDomains};
     
+    // Explicitly whitelist critical streaming domains
+    allDomains.remove('vidsrcme.ru');
+    allDomains.remove('2embed.cc');
+    
     return allDomains.any((domain) => uri.host.contains(domain));
   }
 
@@ -101,16 +105,6 @@ class AdBlockService {
             return false;
           }
         }, true);
-        (function(){
-          const originalHref = window.location.href;
-          const observer = new MutationObserver(() => {
-            if(window.location.href !== originalHref){
-              console.log('🔒 Blocked navigation attempt via iframe src change:', window.location.href);
-              window.location.href = originalHref;
-            }
-          });
-          observer.observe(document.documentElement, { attributes:true, childList:true, subtree:true });
-        })();
         const video = document.querySelector('video');
         if (video) {
           video.style.setProperty('position', 'fixed', 'important');

@@ -1,4 +1,4 @@
-import 'dart:collection';
+﻿import 'dart:collection';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -595,7 +595,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       children: [
         // LAYER 1: Core Web Rendering Viewport
         InAppWebView(
-          key: _playerKey,
           initialUrlRequest: currentUrl.isNotEmpty
               ? URLRequest(url: WebUri(currentUrl))
               : null,
@@ -608,7 +607,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             javaScriptCanOpenWindowsAutomatically: true,
             supportMultipleWindows: true,
             userAgent:
-                "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
             allowsInlineMediaPlayback: true,
             iframeAllowFullscreen: true,
             thirdPartyCookiesEnabled: true,
@@ -620,24 +619,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             UserScript(
               source: "",
               injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-              forMainFrameOnly: false,
+              forMainFrameOnly: false, // Injects into all nested iframes!
             ),
           ]),
           onWebViewCreated: (controller) {
             webViewController = controller;
-          },
-          shouldOverrideUrlLoading: (controller, navigationAction) async {
-            var url = navigationAction.request.url?.toString() ?? '';
-            
-            if (navigationAction.isForMainFrame) {
-              bool blocked = await AdBlockService.isAdDomain(url);
-              if (blocked) {
-                print('Blocked navigation to ad domain: $url');
-                return NavigationActionPolicy.CANCEL;
-              }
-            }
-            
-            return NavigationActionPolicy.ALLOW;
           },
           onCreateWindow: (controller, createWindowAction) async {
             // We return true to handle the window creation, but we DON'T actually
@@ -646,7 +632,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             print("Swallowed popup window creation in background");
             return true;
           },
-
+          shouldOverrideUrlLoading: (controller, navigationAction) async {
+            var url = navigationAction.request.url?.toString() ?? '';
+            if (navigationAction.isForMainFrame) {
+              bool blocked = await AdBlockService.isAdDomain(url);
+              if (blocked) {
+                print('Blocked navigation to ad domain: $url');
+                return NavigationActionPolicy.CANCEL;
+              }
+            }
+            return NavigationActionPolicy.ALLOW;
+          },
           onLoadStop: (controller, url) async {
             if (url != null) {
               final script = await AdBlockService.getUiCleanerScript(
@@ -739,6 +735,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildPlayerSection() {
     return Container(
+      key: _playerKey,
       child: _buildVideoPlayerArea(),
     );
   }
