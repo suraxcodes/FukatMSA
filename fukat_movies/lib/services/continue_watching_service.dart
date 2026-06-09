@@ -15,6 +15,9 @@ class ContinueWatchingService {
     required bool isMovie,
     int? lastSeason,
     int? lastEpisode,
+    int? position,
+    int? duration,
+    bool isCompleted = false,
   }) async {
     await _box.put(tmdbId, {
       'tmdbId': tmdbId,
@@ -23,6 +26,9 @@ class ContinueWatchingService {
       'isMovie': isMovie,
       'lastSeason': lastSeason,
       'lastEpisode': lastEpisode,
+      'position': position,
+      'duration': duration,
+      'isCompleted': isCompleted,
       'savedAt': DateTime.now().toIso8601String(),
     });
     
@@ -40,6 +46,15 @@ class ContinueWatchingService {
 
   static Future<List<Map<String, dynamic>>> getAllItemsAsync() async {
     return await compute(_extractItems, _box);
+  }
+
+  static bool isWatched(String tmdbId) {
+    if (!_box.isOpen) return false;
+    final item = _box.get(tmdbId);
+    if (item != null && item is Map) {
+      return item['isCompleted'] == true;
+    }
+    return false;
   }
 
   static List<Map<String, dynamic>> _extractItems(Box box) {

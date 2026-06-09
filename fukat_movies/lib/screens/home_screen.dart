@@ -9,6 +9,9 @@ import 'settings_screen.dart';
 import '../services/supabase_sync_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../monetization/services/ad_service.dart';
+import '../widgets/auth_popup.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -27,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _fetchData();
     SupabaseSyncService.pullContinueWatching();
+    SupabaseSyncService.pullWatchlist();
+    SupabaseSyncService.pullSearchHistory();
   }
 
   Future<void> _fetchData() async {
@@ -138,6 +143,26 @@ class _HomeScreenState extends State<HomeScreen> {
                               isMovie: isMovie,
                             ),
                           ),
+                          ValueListenableBuilder<Box>(
+                            valueListenable: ContinueWatchingService.listenable,
+                            builder: (context, box, child) {
+                              if (ContinueWatchingService.isWatched(tmdbId)) {
+                                return Positioned(
+                                  top: 4,
+                                  left: 4,
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.greenAccent.withOpacity(0.9),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text('WATCHED', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
                         ],
                       ),
                       SizedBox(height: 8),
@@ -207,27 +232,51 @@ class _HomeScreenState extends State<HomeScreen> {
                       margin: EdgeInsets.symmetric(horizontal: 8.0),
                       child: Column(
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: posterPath != null
-                                ? Image.network(
-                                    'https://image.tmdb.org/t/p/w500$posterPath',
-                                    height: 200,
-                                    width: 150,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Container(
-                                    height: 200,
-                                    width: 150,
-                                    color: Colors.grey[800],
-                                    child: Center(
-                                      child: Text(
-                                        titleText,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(color: Colors.white70),
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: posterPath != null
+                                    ? Image.network(
+                                        'https://image.tmdb.org/t/p/w500$posterPath',
+                                        height: 200,
+                                        width: 150,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Container(
+                                        height: 200,
+                                        width: 150,
+                                        color: Colors.grey[800],
+                                        child: Center(
+                                          child: Text(
+                                            titleText,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(color: Colors.white70),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
+                              ),
+                              ValueListenableBuilder<Box>(
+                                valueListenable: ContinueWatchingService.listenable,
+                                builder: (context, box, child) {
+                                  if (ContinueWatchingService.isWatched(tmdbId)) {
+                                    return Positioned(
+                                      top: 4,
+                                      left: 4,
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.greenAccent.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text('WATCHED', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                            ],
                           ),
                           SizedBox(height: 8),
                           Text(
@@ -283,6 +332,49 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+          ),
+          StreamBuilder<AuthState>(
+            stream: SupabaseAuthService.authStateChanges,
+            builder: (context, snapshot) {
+              final session = snapshot.data?.session;
+              if (session != null) {
+                return IconButton(
+                  icon: const Icon(Icons.person, color: Colors.greenAccent),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        backgroundColor: Colors.grey[900],
+                        title: const Text('Account', style: TextStyle(color: Colors.white)),
+                        content: Text('Logged in as ${session.user.email}', style: const TextStyle(color: Colors.white70)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close', style: TextStyle(color: Colors.white70)),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              SupabaseAuthService.signOut();
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Sign Out', style: TextStyle(color: Colors.redAccent)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              }
+              return IconButton(
+                icon: const Icon(Icons.login, color: Colors.redAccent),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AuthPopup(),
+                  );
+                },
               );
             },
           ),

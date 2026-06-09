@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/tmdb_service.dart';
+import '../services/supabase_sync_service.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
 import '../widgets/watchlist_icon_button.dart';
@@ -48,6 +49,9 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_recentSearches.length > 20) _recentSearches.removeLast();
     await prefs.setStringList('recent_searches', _recentSearches);
     if (mounted) setState(() {});
+    
+    // Trigger background sync
+    SupabaseSyncService.syncSearchHistory();
   }
 
   Future<void> _saveOpenedItem(Map<String, dynamic> item) async {
@@ -70,6 +74,9 @@ class _SearchScreenState extends State<SearchScreen> {
     final itemsStr = _recentOpenedItems.map((e) => jsonEncode(e)).toList();
     await prefs.setStringList('recent_opened_items', itemsStr);
     if (mounted) setState(() {});
+
+    // Trigger background sync
+    SupabaseSyncService.syncSearchHistory();
   }
 
   @override

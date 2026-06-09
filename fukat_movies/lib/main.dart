@@ -6,7 +6,6 @@ import 'package:media_kit/media_kit.dart';
 import 'services/remote_config_service.dart';
 import 'services/supabase_auth_service.dart';
 import 'screens/home_screen.dart';
-import 'screens/auth_screen.dart';
 
 Future<void> main() async {
   // 1. Ensure structural widget engine bindings are completely ready
@@ -96,25 +95,7 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: SupabaseAuthService.authStateChanges,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF141414),
-            body: Center(
-              child: CircularProgressIndicator(color: Colors.redAccent),
-            ),
-          );
-        }
-
-        final session = snapshot.data?.session;
-        if (session != null) {
-          return HomeScreen();
-        }
-        
-        return const AuthScreen();
-      },
-    );
+    // HomeScreen will manage its own state (login popup)
+    return HomeScreen();
   }
 }

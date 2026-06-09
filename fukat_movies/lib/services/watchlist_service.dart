@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'supabase_sync_service.dart';
 
 class WatchlistService {
   // 🚀 Helper to lazily obtain the watchlist Hive box
@@ -29,6 +30,9 @@ class WatchlistService {
         'savedAt': DateTime.now().toIso8601String(),
       });
     }
+    
+    // Trigger background sync
+    SupabaseSyncService.syncWatchlist();
   }
 
   static Future<bool> isSaved(String tmdbId) async {

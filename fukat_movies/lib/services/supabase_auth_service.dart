@@ -11,6 +11,18 @@ class SupabaseAuthService {
     return await _supabase.auth.signInWithPassword(email: email, password: password);
   }
 
+  static Future<void> signInWithOtp({required String email}) async {
+    await _supabase.auth.signInWithOtp(email: email);
+  }
+
+  static Future<AuthResponse> verifyOTP({required String email, required String token, OtpType type = OtpType.magiclink}) async {
+    return await _supabase.auth.verifyOTP(
+      type: type, 
+      email: email, 
+      token: token,
+    );
+  }
+
   static Future<void> signOut() async {
     await _supabase.auth.signOut();
   }

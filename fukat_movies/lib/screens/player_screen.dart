@@ -75,6 +75,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initializePlaybackData();
   }
 
+  @override
+  void dispose() {
+    _networkSub?.cancel();
+    _saveProgress();
+    _mediaPlayer?.dispose();
+    super.dispose();
+  }
+
+  void _saveProgress() {
+    if (_mediaPlayer == null) return;
+    try {
+      final position = _mediaPlayer!.state.position.inSeconds;
+      final duration = _mediaPlayer!.state.duration.inSeconds;
+      
+      bool isCompleted = false;
+      if (duration > 0 && position >= duration * 0.9) {
+        isCompleted = true; // Mark as watched if 90% completed
+      }
+
+      ContinueWatchingService.saveItem(
+        tmdbId: widget.tmdbId,
+        title: widget.title,
+        posterPath: null,
+        isMovie: widget.isMovie,
+        lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
+        lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
+        position: position,
+        duration: duration,
+        isCompleted: isCompleted,
+      );
+    } catch (e) {
+      print('Error saving progress: $e');
+    }
+  }
+
   void _handleNetworkSpeedChange(NetworkSpeed speed) {
     if (_mediaPlayer == null || _availableQualities.isEmpty) return;
     
@@ -95,12 +130,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _networkSub?.cancel();
-    _mediaPlayer?.dispose();
-    super.dispose();
-  }
 
   Future<void> _initializePlaybackData() async {
     // Fetch IMDB ID since some providers require it
