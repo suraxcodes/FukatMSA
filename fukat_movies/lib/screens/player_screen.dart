@@ -19,6 +19,7 @@ class PlayerScreen extends StatefulWidget {
   final String tmdbId;
   final bool isMovie;
   final String title;
+  final bool isAnime;
 
   PlayerScreen({
     required this.tmdbId,
