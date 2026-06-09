@@ -13,6 +13,7 @@ import '../services/streaming_aggregator_service.dart';
 import '../services/network_service.dart';
 import '../widgets/episode_side_panel.dart';
 import '../services/continue_watching_service.dart';
+import '../widgets/watchlist_icon_button.dart';
 
 class PlayerScreen extends StatefulWidget {
   final String tmdbId;
@@ -552,119 +553,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ),
-            if (_availableQualities.isNotEmpty)
-              Positioned(
-                top: 16,
-                right: 16,
-                child: SafeArea(
-                  child: PopupMenuButton<dynamic>(
-                    icon: const Icon(Icons.settings, color: Colors.white),
-                    color: Colors.grey[900],
-                    onSelected: (value) {
-                      if (value == 'sub') {
-                        if (_isDub) {
-                          setState(() { _isDub = false; });
-                          _preparePlaybackUrl();
-                        }
-                      } else if (value == 'dub') {
-                        if (!_isDub) {
-                          setState(() { _isDub = true; });
-                          _preparePlaybackUrl();
-                        }
-                      } else if (value is Map<String, dynamic>) {
-                        _changeQuality(value); // isAuto is false by default
-                      } else if (value is SubtitleTrack) {
-                        _changeSubtitle(value);
-                      } else if (value is String && value.startsWith('api_sub_')) {
-                        final url = value.replaceFirst('api_sub_', '');
-                        _changeSubtitle(SubtitleTrack.uri(url));
-                      }
-                    },
-                    itemBuilder: (context) {
-                      List<PopupMenuEntry<dynamic>> items = [];
-                      
-                      if (_availableQualities.isNotEmpty) {
-                        items.add(
-                          const PopupMenuItem<dynamic>(
-                            enabled: false,
-                            child: Text('Quality', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                          ),
-                        );
-                        items.addAll(_availableQualities.map((stream) {
-                          return PopupMenuItem<dynamic>(
-                            value: stream,
-                            child: Text(
-                              stream['quality'] ?? 'Auto',
-                              style: TextStyle(
-                                color: _selectedQuality == stream['quality']
-                                    ? Colors.redAccent
-                                    : Colors.white,
-                                fontWeight: _selectedQuality == stream['quality']
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                          );
-                        }));
-
-                        items.add(const PopupMenuDivider());
-
-                        items.add(
-                          const PopupMenuItem<dynamic>(
-                            enabled: false,
-                            child: Text('Subtitles (CC)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                          ),
-                        );
-                        
-                        items.add(
-                          PopupMenuItem<dynamic>(
-                            value: SubtitleTrack.no(),
-                            child: Text(
-                              'Off',
-                              style: TextStyle(
-                                color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
-                                fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                        );
-
-                        // Add API Subtitles
-                        items.addAll(_apiSubtitles.map((sub) {
-                          // Note: We skip highlighting the selected API subtitle track here because 
-                          // media_kit's track id structure for URIs is an internal implementation detail.
-                          return PopupMenuItem<dynamic>(
-                            value: 'api_sub_${sub['url']}',
-                            child: Text(
-                              sub['lang'] ?? 'Unknown',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.normal,
-                              ),
-                            ),
-                          );
-                        }));
-
-                        // Add Embedded Subtitles
-                        items.addAll(_embeddedSubtitles.map((sub) {
-                          return PopupMenuItem<dynamic>(
-                            value: sub,
-                            child: Text(
-                              sub.language ?? sub.title ?? sub.id,
-                              style: TextStyle(
-                                color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
-                                fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          );
-                        }));
-                      }
-                      
-                      return items;
-                    },
-                  ),
-                ),
-              ),
           ],
         );
       } else {
@@ -687,8 +575,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             supportZoom: false,
             disableContextMenu: true,
             useShouldOverrideUrlLoading: true,
-            javaScriptCanOpenWindowsAutomatically: false,
-            supportMultipleWindows: false,
+            javaScriptCanOpenWindowsAutomatically: true,
+            supportMultipleWindows: true,
             userAgent:
                 "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
             allowsInlineMediaPlayback: true,
@@ -707,6 +595,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ]),
           onWebViewCreated: (controller) {
             webViewController = controller;
+          },
+          onCreateWindow: (controller, createWindowAction) async {
+            // We return true to handle the window creation, but we DON'T actually
+            // create or show a new window! This effectively swallows the popup 
+            // silently in the background, making the ad invisible.
+            print("Swallowed popup window creation in background");
+            return true;
           },
           shouldOverrideUrlLoading: (controller, navigationAction) async {
             var url = navigationAction.request.url?.toString() ?? '';
@@ -752,14 +647,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (providers.isEmpty) return SizedBox.shrink();
 
     return Container(
-      color: const Color(0xFF1A1A1A),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      color: Colors.black, // Main row background matches app background
       child: Row(
         children: [
           Icon(Icons.dns, color: Colors.white70, size: 20),
           SizedBox(width: 8),
           Text(
-            "Server:",
+            'Server:',
             style: TextStyle(
               color: Colors.white70,
               fontWeight: FontWeight.bold,
@@ -767,9 +662,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           SizedBox(width: 12),
           Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<int>(
-                dropdownColor: Colors.grey[900],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
                 value: currentProviderIndex < providers.length
                     ? currentProviderIndex
                     : null,
@@ -795,6 +696,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   }
                 },
               ),
+              ),
             ),
           ),
         ],
@@ -805,12 +707,237 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _buildPlayerSection() {
     return Container(
       key: _playerKey,
+      child: _buildVideoPlayerArea(),
+    );
+  }
+
+
+  Widget _buildSeriesInfo() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Flexible(child: _buildVideoPlayerArea()),
-          _buildServerSelector(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+              ),
+              WatchlistIconButton(
+                tmdbId: widget.tmdbId.toString(),
+                title: widget.title,
+                posterPath: _bannerUrl,
+                isMovie: widget.isMovie,
+                showText: true,
+                text: 'SAVE',
+              ),
+              IconButton(
+                icon: Column(
+                  children: [
+                    Icon(Icons.thumb_up_alt_outlined, color: Colors.white),
+                    Text('RATE', style: TextStyle(color: Colors.white, fontSize: 10)),
+                  ],
+                ),
+                onPressed: () {},
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          if (!widget.isMovie)
+            Text(
+              'Season $currentSeason : Episode $currentEpisode',
+              style: TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+          SizedBox(height: 12),
+          Text(
+            'In a world of magic where social standing is determined by arcane prowess...', // Placeholder synopsis
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMoreLikeThis() {
+    return FutureBuilder<List<dynamic>>(
+      future: widget.isMovie
+          ? TmdbService.getSimilarMovies(int.parse(widget.tmdbId))
+          : TmdbService.getSimilarTvShows(int.parse(widget.tmdbId)),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return SizedBox.shrink();
+        final items = snapshot.data!;
+        if (items.isEmpty) return SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "More Like This",
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Container(
+              height: 200,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final posterPath = item['poster_path'];
+                  final titleText = item['title'] ?? item['name'];
+                  final tmdbId = item['id'].toString();
+
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PlayerScreen(
+                            tmdbId: tmdbId,
+                            isMovie: widget.isMovie,
+                            title: titleText,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 120,
+                      margin: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: posterPath != null
+                                ? Image.network(
+                                    'https://image.tmdb.org/t/p/w500$posterPath',
+                                    height: 160,
+                                    width: 120,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(
+                                    height: 160,
+                                    width: 120,
+                                    color: Colors.grey[800],
+                                  ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            titleText,
+                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsMenu() {
+    return PopupMenuButton<dynamic>(
+      icon: const Icon(Icons.settings, color: Colors.white),
+      color: Colors.grey[900],
+      onSelected: (value) {
+        if (value == 'sub') {
+          if (_isDub) {
+            setState(() { _isDub = false; });
+            _preparePlaybackUrl();
+          }
+        } else if (value == 'dub') {
+          if (!_isDub) {
+            setState(() { _isDub = true; });
+            _preparePlaybackUrl();
+          }
+        } else if (value is Map<String, dynamic>) {
+          _changeQuality(value);
+        } else if (value is SubtitleTrack) {
+          _changeSubtitle(value);
+        } else if (value is String && value.startsWith('api_sub_')) {
+          final url = value.replaceFirst('api_sub_', '');
+          _changeSubtitle(SubtitleTrack.uri(url));
+        }
+      },
+      itemBuilder: (context) {
+        List<PopupMenuEntry<dynamic>> items = [];
+        if (_availableQualities.isNotEmpty) {
+          items.add(
+            const PopupMenuItem<dynamic>(
+              enabled: false,
+              child: Text('Quality', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+          );
+          items.addAll(_availableQualities.map((stream) {
+            return PopupMenuItem<dynamic>(
+              value: stream,
+              child: Text(
+                stream['quality'] ?? 'Auto',
+                style: TextStyle(
+                  color: _selectedQuality == stream['quality'] ? Colors.redAccent : Colors.white,
+                  fontWeight: _selectedQuality == stream['quality'] ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            );
+          }));
+
+          items.add(const PopupMenuDivider());
+
+          items.add(
+            const PopupMenuItem<dynamic>(
+              enabled: false,
+              child: Text('Subtitles (CC)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+          );
+          
+          items.add(
+            PopupMenuItem<dynamic>(
+              value: SubtitleTrack.no(),
+              child: Text(
+                'Off',
+                style: TextStyle(
+                  color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
+                  fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+          );
+
+          items.addAll(_apiSubtitles.map((sub) {
+            return PopupMenuItem<dynamic>(
+              value: 'api_sub_${sub['url']}',
+              child: Text(
+                sub['lang'] ?? 'Unknown',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.normal),
+              ),
+            );
+          }));
+
+          items.addAll(_embeddedSubtitles.map((sub) {
+            return PopupMenuItem<dynamic>(
+              value: sub,
+              child: Text(
+                sub.language ?? sub.title ?? sub.id,
+                style: TextStyle(
+                  color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
+                  fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            );
+          }));
+        }
+        return items;
+      },
     );
   }
 
@@ -824,10 +951,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final bool isWide = screenWidth > 700;
+    final bool isWide = false; // Force mobile layout everywhere
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Color(0xFF141414), // Dark background matching design
       appBar: isWide
           ? null
           : AppBar(
@@ -837,21 +964,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
               backgroundColor: Colors.black,
               iconTheme: IconThemeData(color: Colors.white),
+              actions: [
+                if (_availableQualities.isNotEmpty) _buildSettingsMenu(),
+              ],
             ),
       body: SafeArea(
         child: isWide
             ? Row(
                 children: [
-                  // Left Side: Player Section (Takes maximum space)
-                  Expanded(flex: 3, child: _buildPlayerSection()),
-                  // Right Side: Episode Picker (Pinned to the right)
+                  Expanded(
+                    flex: 3,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: _buildPlayerSection(),
+                          ),
+                          _buildServerSelector(),
+                          _buildSeriesInfo(),
+                          _buildMoreLikeThis(),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (!widget.isMovie)
                     Container(
                       width: 320,
                       decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: Colors.white12, width: 1),
-                        ),
+                        border: Border(left: BorderSide(color: Colors.white12, width: 1)),
                       ),
                       child: EpisodeSidePanel(
                         tmdbId: widget.tmdbId,
@@ -874,9 +1016,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         hasDub: _hasDubAvailable,
                         onAudioChanged: (isDub) {
                           if (_isDub != isDub) {
-                            setState(() {
-                              _isDub = isDub;
-                            });
+                            setState(() { _isDub = isDub; });
                             _preparePlaybackUrl();
                           }
                         },
@@ -884,18 +1024,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                 ],
               )
-            : Column(
-                children: [
-                  // Top Side: Player Section
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.45,
-                    width: double.infinity,
-                    child: _buildPlayerSection(),
-                  ),
-                  // Bottom Side: Episode Picker (if not a movie)
-                  if (!widget.isMovie)
-                    Expanded(
-                      child: EpisodeSidePanel(
+            : SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: _buildPlayerSection(),
+                    ),
+                    _buildServerSelector(),
+                    if (!widget.isMovie)
+                      EpisodeSidePanel(
                         tmdbId: widget.tmdbId,
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
@@ -916,15 +1055,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         hasDub: _hasDubAvailable,
                         onAudioChanged: (isDub) {
                           if (_isDub != isDub) {
-                            setState(() {
-                              _isDub = isDub;
-                            });
+                            setState(() { _isDub = isDub; });
                             _preparePlaybackUrl();
                           }
                         },
                       ),
-                    ),
-                ],
+                    _buildSeriesInfo(),
+                    _buildMoreLikeThis(),
+                  ],
+                ),
               ),
       ),
     );

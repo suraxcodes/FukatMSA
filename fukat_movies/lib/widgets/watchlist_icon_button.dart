@@ -7,12 +7,16 @@ class WatchlistIconButton extends StatefulWidget {
   final String title;
   final String? posterPath;
   final bool isMovie;
+  final bool showText;
+  final String text;
 
   WatchlistIconButton({
     required this.tmdbId,
     required this.title,
     required this.posterPath,
     required this.isMovie,
+    this.showText = false,
+    this.text = 'SAVE',
   });
 
   @override
@@ -56,11 +60,26 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
       builder: (context, box, _) {
         // Update saved state based on box changes
         _isSaved = box.containsKey(widget.tmdbId);
+        Widget iconWidget = Icon(
+          _isSaved ? Icons.bookmark : Icons.bookmark_border,
+          color: _isSaved ? Colors.redAccent : Colors.white,
+        );
+
+        if (widget.showText) {
+          iconWidget = Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              iconWidget,
+              Text(
+                _isSaved ? 'SAVED' : widget.text,
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+              ),
+            ],
+          );
+        }
+
         return IconButton(
-          icon: Icon(
-            _isSaved ? Icons.bookmark : Icons.bookmark_border,
-            color: _isSaved ? Colors.redAccent : Colors.white,
-          ),
+          icon: iconWidget,
           onPressed: _toggleWatchlist,
         );
       },

@@ -17,7 +17,10 @@ class AdBlockService {
     'ajio.com', 'myntra.com', 'flipkart.com', 'amazon.in',
     'adsterra', 'propellerads', 'infolinks', 'revenuehits',
     'awin1.com', 'admitad.com', 'cuelinks.com', 'vcommission.com',
-    'vidsrcme.ru',
+    'vidsrcme.ru', 'qxbroker.com', 'dafapromo.com', 'binomo.com',
+    'olymptrade.com', '1xbet.com', 'bet365.com', 'melbet.com', 'parimatch.com',
+    'iqoption.com', 'betway.com', '888casino.com', 'draftkings.com',
+    'fanduel.com', 'betmgm.com', 'unibet.com', 'bovada.lv', 'betonline.ag',
     'masonerthoria.shop', 'videouv.online', 'jape.hoosgowdemodedimouts.cyou',
   };
 
@@ -57,7 +60,11 @@ class AdBlockService {
     final config = await _loadConfig();
     final uri = Uri.tryParse(url);
     if (uri == null || uri.host.isEmpty) return false;
-    return config.domains.any((domain) => uri.host.contains(domain));
+    
+    // Check both remote config domains and our local aggressive fallback blocklist
+    final allDomains = <String>{...config.domains, ..._fallbackDomains};
+    
+    return allDomains.any((domain) => uri.host.contains(domain));
   }
 
   // Dynamic Script Builder – async

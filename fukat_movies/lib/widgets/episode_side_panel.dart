@@ -61,7 +61,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1A1A1A), // Dark background matching UI theme
+      color: Colors.black, // Changed to solid black
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -84,7 +84,11 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                   },
                 ) : Container(
                   alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8,vertical: 15),
+                  decoration: BoxDecoration(
+                    color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   child: const Text('Sub', style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               ),
@@ -95,14 +99,14 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
+                    color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: widget.seasons.contains(_selectedSeason) ? _selectedSeason : (widget.seasons.isNotEmpty ? widget.seasons.first : null),
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF2A2A2A),
+                      dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
                       icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                       items: widget.seasons
@@ -147,7 +151,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                 child: Container(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: isPlaying ? const Color(0xFF8A2BE2) : const Color(0xFF2A2A2A),
+                    color: isPlaying ? const Color(0xFF8A2BE2) : const Color.fromARGB(255, 14, 13, 13), // Match user's black
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -174,14 +178,14 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
         borderRadius: BorderRadius.circular(4),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: items.contains(value) ? value : (items.isNotEmpty ? items.first : null),
           isExpanded: true,
-          dropdownColor: const Color(0xFF2A2A2A),
+          dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
           style: const TextStyle(color: Colors.white70, fontSize: 12),
           items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
