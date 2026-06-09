@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/tmdb_service.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
@@ -19,6 +21,56 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _animeResults = [];
   bool _isLoading = false;
   Timer? _debounce;
+  List<dynamic> _recentOpenedItems = [];
+  List<String> _recentSearches = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSearches();
+  }
+
+  Future<void> _loadSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    final itemsStr = prefs.getStringList('recent_opened_items') ?? [];
+    setState(() {
+      _recentOpenedItems = itemsStr.map((e) => jsonDecode(e)).toList();
+      _recentSearches = prefs.getStringList('recent_searches') ?? [];
+    });
+  }
+
+  Future<void> _saveSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    _recentSearches.remove(q);
+    _recentSearches.insert(0, q);
+    if (_recentSearches.length > 20) _recentSearches.removeLast();
+    await prefs.setStringList('recent_searches', _recentSearches);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveOpenedItem(Map<String, dynamic> item) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // We only need specific fields to render the banner
+    final minimalItem = {
+      'id': item['id'],
+      'title': item['title'],
+      'name': item['name'],
+      'poster_path': item['poster_path'],
+      'media_type': item['media_type'],
+      'genre_ids': item['genre_ids'],
+    };
+
+    _recentOpenedItems.removeWhere((element) => element['id'] == item['id']);
+    _recentOpenedItems.insert(0, minimalItem);
+    if (_recentOpenedItems.length > 20) _recentOpenedItems.removeLast();
+    
+    final itemsStr = _recentOpenedItems.map((e) => jsonEncode(e)).toList();
+    await prefs.setStringList('recent_opened_items', itemsStr);
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -69,15 +121,21 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  Widget _buildSection(String sectionTitle, List<dynamic> items) {
+  Widget _buildSection(String sectionTitle, List<dynamic> items, {Widget? trailing}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
-          child: Text(
-            sectionTitle,
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                sectionTitle,
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              if (trailing != null) trailing,
+            ],
           ),
         ),
         SizedBox(
@@ -95,10 +153,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
               return Container(
                 width: 120,
-                margin: EdgeInsets.only(right: 12.0),
-                child: GestureDetector(
-              onTap: () async {
-                if (!SupabaseAuthService.isPremium) {
+                  margin: EdgeInsets.only(right: 12.0),
+                  child: GestureDetector(
+                onTap: () async {
+                  _saveOpenedItem(item as Map<String, dynamic>);
+                  if (!SupabaseAuthService.isPremium) {
                   await MockAdService().showInterstitialAd(context);
                 }
                 if (!context.mounted) return;
@@ -166,6 +225,77 @@ class _SearchScreenState extends State<SearchScreen> {
 );
 }
 
+  Widget _buildRecentSearches() {
+    if (_recentOpenedItems.isEmpty && _recentSearches.isEmpty) {
+      return Center(
+        child: Text('Search for movies, shows, or anime', style: TextStyle(color: Colors.white54, fontSize: 16)),
+      );
+    }
+    return ListView(
+      padding: EdgeInsets.all(8),
+      children: [
+        if (_recentSearches.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Recent Searches', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                TextButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('recent_searches');
+                    setState(() { _recentSearches.clear(); });
+                  },
+                  child: Text('Clear', style: TextStyle(color: Colors.redAccent)),
+                ),
+              ],
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _recentSearches.map((query) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: InputChip(
+                    label: Text(query, style: TextStyle(color: Colors.white)),
+                    backgroundColor: Colors.grey[850],
+                    deleteIconColor: Colors.white54,
+                    onDeleted: () async {
+                      _recentSearches.remove(query);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setStringList('recent_searches', _recentSearches);
+                      setState(() {});
+                    },
+                    onPressed: () {
+                      _searchController.text = query;
+                      _onSearchChanged(query);
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          SizedBox(height: 16),
+        ],
+        if (_recentOpenedItems.isNotEmpty)
+          _buildSection(
+            'Recently Viewed', 
+            _recentOpenedItems,
+            trailing: TextButton(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('recent_opened_items');
+                setState(() { _recentOpenedItems.clear(); });
+              },
+              child: Text('Clear', style: TextStyle(color: Colors.redAccent)),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -182,6 +312,7 @@ class _SearchScreenState extends State<SearchScreen> {
             hintStyle: TextStyle(color: Colors.white54),
             border: InputBorder.none,
           ),
+          onSubmitted: _saveSearch,
           onChanged: _onSearchChanged,
         ),
         actions: [
@@ -196,15 +327,17 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: Colors.redAccent))
-          : (_movieResults.isEmpty && _seriesResults.isEmpty && _animeResults.isEmpty)
-              ? Center(
-                  child: Text(
-                    'No results',
-                    style: TextStyle(color: Colors.white54, fontSize: 18),
-                  ),
-                )
-              : ListView(
-                  padding: EdgeInsets.all(8),
+          : _searchController.text.isEmpty
+              ? _buildRecentSearches()
+              : (_movieResults.isEmpty && _seriesResults.isEmpty && _animeResults.isEmpty)
+                  ? Center(
+                      child: Text(
+                        'No results',
+                        style: TextStyle(color: Colors.white54, fontSize: 18),
+                      ),
+                    )
+                  : ListView(
+                      padding: EdgeInsets.all(8),
                   children: [
                     if (_movieResults.isNotEmpty) _buildSection('Movies', _movieResults),
                     if (_seriesResults.isNotEmpty) _buildSection('TV Shows', _seriesResults),
