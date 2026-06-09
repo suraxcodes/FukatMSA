@@ -124,39 +124,42 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
           ),
           const SizedBox(height: 16),
           // Episodes grid
-          Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF8A2BE2)))
-              : GridView.builder(
-              itemCount: _currentEpisodes.length,
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 60,
-                childAspectRatio: 1.2,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemBuilder: (ctx, idx) {
-                final ep = _currentEpisodes[idx];
-                final bool isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
-                return GestureDetector(
-                  onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isPlaying ? const Color(0xFF8A2BE2) : const Color(0xFF2A2A2A),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      ep,
-                      style: TextStyle(
-                        color: isPlaying ? Colors.white : Colors.white70,
-                        fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                      ),
+          _isLoading 
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(child: CircularProgressIndicator(color: Color(0xFF8A2BE2))),
+              )
+            : GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _currentEpisodes.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 60,
+              childAspectRatio: 1.2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemBuilder: (ctx, idx) {
+              final ep = _currentEpisodes[idx];
+              final bool isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
+              return GestureDetector(
+                onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isPlaying ? const Color(0xFF8A2BE2) : const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    ep,
+                    style: TextStyle(
+                      color: isPlaying ? Colors.white : Colors.white70,
+                      fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ],
       ),

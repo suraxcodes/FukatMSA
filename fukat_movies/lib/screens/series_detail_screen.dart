@@ -69,6 +69,17 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
           final name = season['name'];
           final number = season['season_number'];
           final poster = season['poster_path'];
+          
+          if (number == null || number <= 0) return const SizedBox.shrink();
+          
+          final airDateStr = season['air_date'];
+          if (airDateStr != null) {
+            try {
+              final airDate = DateTime.parse(airDateStr);
+              if (airDate.isAfter(DateTime.now())) return const SizedBox.shrink();
+            } catch (_) {}
+          }
+          
           return ListTile(
             leading: poster != null
                 ? Image.network('https://image.tmdb.org/t/p/w200$poster', width: 50, fit: BoxFit.cover)

@@ -125,7 +125,18 @@ class TmdbService {
   static Future<List<dynamic>> getSeasonEpisodes(int tmdbId, int seasonNumber) async {
     try {
       final data = await _fetchAndDecode('/tv/$tmdbId/season/$seasonNumber');
-      return (data['episodes'] as List<dynamic>?) ?? [];
+      final episodes = (data['episodes'] as List<dynamic>?) ?? [];
+      final now = DateTime.now();
+      
+      return episodes.where((ep) {
+        if (ep['air_date'] == null) return false;
+        try {
+          final airDate = DateTime.parse(ep['air_date']);
+          return airDate.isBefore(now) || airDate.isAtSameMomentAs(now);
+        } catch (_) {
+          return false;
+        }
+      }).toList();
     } catch (_) {
       return [];
     }
@@ -164,5 +175,17 @@ class TmdbService {
     } on SocketException catch (_) {
       return false;
     }
+  }
+
+  // Get Similar Movies
+  static Future<List<dynamic>> getSimilarMovies(int tmdbId) async {
+    final data = await _fetchAndDecode('/movie/$tmdbId/recommendations');
+    return (data['results'] as List<dynamic>?) ?? [];
+  }
+
+  // Get Similar TV Shows
+  static Future<List<dynamic>> getSimilarTvShows(int tmdbId) async {
+    final data = await _fetchAndDecode('/tv/$tmdbId/recommendations');
+    return (data['results'] as List<dynamic>?) ?? [];
   }
 }

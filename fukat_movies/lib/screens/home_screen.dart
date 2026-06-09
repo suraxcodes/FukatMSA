@@ -294,11 +294,11 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildContinueWatchingRow(),
                   if (_trendingMovies.isNotEmpty) 
                     _buildMediaRow("Trending Movies", _trendingMovies, true),
                   _buildMediaRow("Trending TV Shows", _trendingTv, false),
                   _buildMediaRow("Trending Anime", _trendingAnime, false),
+                  _buildContinueWatchingRow(),
                 ],
               ),
             ),

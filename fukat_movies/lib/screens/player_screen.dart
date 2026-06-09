@@ -1,13 +1,16 @@
 import 'dart:collection';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
 import '../services/ad_block_service.dart';
 import '../services/streaming_aggregator_service.dart';
+import '../services/network_service.dart';
 import '../widgets/episode_side_panel.dart';
 import '../services/continue_watching_service.dart';
 
@@ -58,15 +61,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _hasDubAvailable = false;
   bool _isMappingEpisode = false;
   String _currentEngine = 'webview';
+  bool _userForcedQuality = false;
+  StreamSubscription<NetworkSpeed>? _networkSub;
 
   @override
   void initState() {
     super.initState();
+    NetworkService().initialize();
+    _networkSub = NetworkService().onSpeedChange.listen((speed) {
+      if (mounted) _handleNetworkSpeedChange(speed);
+    });
     _initializePlaybackData();
+  }
+
+  void _handleNetworkSpeedChange(NetworkSpeed speed) {
+    if (_mediaPlayer == null || _availableQualities.isEmpty) return;
+    
+    // User explicitly chose a quality, don't override them
+    if (_userForcedQuality) return;
+
+    if (speed == NetworkSpeed.slow) {
+      // Find a lower quality stream (e.g. 360p or 480p)
+      final lowQualityStream = _availableQualities.firstWhere(
+        (s) => s['quality'] == '360p' || s['quality'] == '480p' || s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
+        orElse: () => _availableQualities.last, // Usually last is lowest if sorted
+      );
+      
+      if (_selectedQuality != lowQualityStream['quality']) {
+        Fluttertoast.showToast(msg: "Network slow, adjusting quality");
+        _changeQuality(lowQualityStream, isAuto: true);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _networkSub?.cancel();
     _mediaPlayer?.dispose();
     super.dispose();
   }
@@ -91,8 +121,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (seriesData != null && seriesData['seasons'] != null) {
         final seasonList = seriesData['seasons'] as List<dynamic>;
         List<String> seasons = [];
+        final now = DateTime.now();
         for (var season in seasonList) {
-          seasons.add(season['season_number'].toString());
+          final sNum = season['season_number'];
+          if (sNum != null && sNum > 0) {
+            // Check air_date to avoid showing unreleased seasons
+            final airDateStr = season['air_date'];
+            if (airDateStr != null) {
+              try {
+                final airDate = DateTime.parse(airDateStr);
+                if (airDate.isAfter(now)) continue;
+              } catch (_) {}
+            }
+            seasons.add(sNum.toString());
+          }
         }
         setState(() {
           _seasons = seasons;
@@ -225,9 +267,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() {});
   }
 
-  void _changeQuality(Map<String, dynamic> stream) async {
+  void _changeQuality(Map<String, dynamic> stream, {bool isAuto = false}) async {
     if (_mediaPlayer == null) return;
     
+    if (!isAuto) {
+      _userForcedQuality = true; // User manually selected, disable auto-downgrade
+    }
+
     final position = _mediaPlayer!.state.position;
     
     setState(() {
@@ -447,9 +493,63 @@ class _PlayerScreenState extends State<PlayerScreen> {
           children: [
             Container(
               color: Colors.black,
-              child: Video(
-                controller: _videoController!,
-                controls: MaterialVideoControls,
+              child: MaterialVideoControlsTheme(
+                normal: MaterialVideoControlsThemeData(
+                  bottomButtonBar: [
+                    IconButton(
+                      icon: const Icon(Icons.replay_10, color: Colors.white),
+                      onPressed: () {
+                        if (_mediaPlayer != null) {
+                          final pos = _mediaPlayer!.state.position;
+                          _mediaPlayer!.seek(pos - const Duration(seconds: 10));
+                        }
+                      },
+                    ),
+                    MaterialPlayOrPauseButton(),
+                    IconButton(
+                      icon: const Icon(Icons.forward_10, color: Colors.white),
+                      onPressed: () {
+                        if (_mediaPlayer != null) {
+                          final pos = _mediaPlayer!.state.position;
+                          _mediaPlayer!.seek(pos + const Duration(seconds: 10));
+                        }
+                      },
+                    ),
+                    MaterialPositionIndicator(),
+                    const Spacer(),
+                    MaterialFullscreenButton(),
+                  ],
+                ),
+                fullscreen: MaterialVideoControlsThemeData(
+                  bottomButtonBar: [
+                    IconButton(
+                      icon: const Icon(Icons.replay_10, color: Colors.white),
+                      onPressed: () {
+                        if (_mediaPlayer != null) {
+                          final pos = _mediaPlayer!.state.position;
+                          _mediaPlayer!.seek(pos - const Duration(seconds: 10));
+                        }
+                      },
+                    ),
+                    MaterialPlayOrPauseButton(),
+                    IconButton(
+                      icon: const Icon(Icons.forward_10, color: Colors.white),
+                      onPressed: () {
+                        if (_mediaPlayer != null) {
+                          final pos = _mediaPlayer!.state.position;
+                          _mediaPlayer!.seek(pos + const Duration(seconds: 10));
+                        }
+                      },
+                    ),
+                    MaterialPositionIndicator(),
+                    const Spacer(),
+                    MaterialFullscreenButton(),
+                  ],
+                ),
+                child: Video(
+                  controller: _videoController!,
+                  controls: MaterialVideoControls,
+                ),
               ),
             ),
             if (_availableQualities.isNotEmpty)
@@ -472,7 +572,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           _preparePlaybackUrl();
                         }
                       } else if (value is Map<String, dynamic>) {
-                        _changeQuality(value);
+                        _changeQuality(value); // isAuto is false by default
                       } else if (value is SubtitleTrack) {
                         _changeSubtitle(value);
                       } else if (value is String && value.startsWith('api_sub_')) {
