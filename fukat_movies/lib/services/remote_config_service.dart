@@ -22,8 +22,12 @@ class RemoteConfigService {
           custom = custom.where((p) {
             final movieUrl = p['movie_url']?.toString() ?? '';
             final tvUrl = p['tv_url']?.toString() ?? '';
-            bool isVidsrc = movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
-            return !isVidsrc;
+            final name = p['name']?.toString()?.toLowerCase() ?? '';
+            bool block = movieUrl.contains('vidsrc') ||
+                         tvUrl.contains('vidsrc') ||
+                         name.contains('animepahe') ||
+                         name.contains('vidsrc.pm');
+            return !block;
           }).toList();
         }
         _activeProviders = custom;
@@ -38,15 +42,19 @@ class RemoteConfigService {
            var providers = data['active_providers'] as List<dynamic>;
            
            if (Platform.isWindows) {
-             providers = providers.where((p) {
-               final movieUrl = p['movie_url']?.toString() ?? '';
-               final tvUrl = p['tv_url']?.toString() ?? '';
-               bool isVidsrc = movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
-               if (isVidsrc) {
-                 print("⚠️ Removing incompatible provider on Windows: ${p['name']}");
-               }
-               return !isVidsrc;
-             }).toList();
+              providers = providers.where((p) {
+                final movieUrl = p['movie_url']?.toString() ?? '';
+                final tvUrl = p['tv_url']?.toString() ?? '';
+                final name = p['name']?.toString()?.toLowerCase() ?? '';
+                bool block = movieUrl.contains('vidsrc') ||
+                             tvUrl.contains('vidsrc') ||
+                             name.contains('animepahe') ||
+                             name.contains('vidsrc.pm');
+                if (block) {
+                  print("⚠️ Removing incompatible provider on Windows: ${p['name']}");
+                }
+                return !block;
+              }).toList();
            }
            
            _activeProviders = providers;

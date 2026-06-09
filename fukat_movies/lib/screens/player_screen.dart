@@ -24,6 +24,7 @@ class PlayerScreen extends StatefulWidget {
     required this.tmdbId,
     required this.isMovie,
     required this.title,
+    this.isAnime = false,
   });
 
   @override
@@ -368,6 +369,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // 2. Compile URL based on Format Styles
     String finalUrl = '';
+    
+    // When building the playback URL for anime titles:
+    if (widget.isAnime && provider.containsKey('anime_url')) {
+      final baseAnime = provider['anime_url'];
+      final phases = provider['anime_phase'];
+      // Use the same format logic (slash/query) for anime URLs.
+      final animeUrl = formatStyle == 'slash'
+          ? '$baseAnime$targetId/'
+          : '$baseAnime$targetId';
+      return {'url': animeUrl, 'phase': phases};
+    }
+
     if (widget.isMovie) {
       if (formatStyle == 'slash' || formatStyle == 'query_mix') {
         finalUrl = '$baseUrl$targetId';
