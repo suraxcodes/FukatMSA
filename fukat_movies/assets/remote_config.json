@@ -1,56 +1,9 @@
 {
   "active_providers": [
     {
-      "name": "111movie",
-      "id_type": "tmdb",
-      "format_style": "slash",
-      "movie_url": "https://111movies.net/movie/",
-      "tv_url": "https://111movies.net/tv/"
-    },
-    {
-      "name": "AnimeMix",
-      "id_type": "tmdb",
-      "format_style": "slash",
-      "movie_url": "https://animemix.cc/movie/",
-      "tv_url": "https://animemix.cc/tv/",
-      "anime_url": "https://animemix.cc/anime/"
-    },
-    {
-      "name": "AutoEmbed",
-      "id_type": "tmdb",
-      "format_style": "dash",
-      "movie_url": "https://autoembed.co/movie/tmdb/",
-      "tv_url": "https://autoembed.co/tv/tmdb/"
-    },
-    {
-      "name": "vidfast.net",
-      "id_type": "tmdb",
-      "format_style": "slash",
-      "movie_url": "https://www.vidfast.net/movie/",
-      "tv_url": "https://www.vidfast.net/tv/"
-    },
-    {
-      "name": "vidlink.pro",
-      "id_type": "tmdb",
-      "format_style": "slash",
-      "movie_url": "https://vidlink.pro/movie/",
-      "tv_url": "https://vidlink.pro/tv/"
-    },
-    {
-      "name": "VidSrc.pm",
-      "id_type": "imdb",
-      "format_style": "query",
-      "movie_url": "https://vidsrc.pm/embed/movie?imdb=",
-      "tv_url": "https://vidsrc.pm/embed/tv?imdb="
-    },
-    {
-      "name": "vidnest.fun",
-      "id_type": "tmdb",
-      "format_style": "slash",
-      "movie_url": "https://vidnest.fun/movie/",
-      "tv_url": "https://vidnest.fun/tv/",
-      "anime_url": "https://vidnest.fun/anime/",
-      "anime_phase": "https://vidnest.fun/animepahe/"
+      "name": "Miruro API (Native)",
+      "engine": "native_miruro",
+      "id_type": "tmdb"
     },
     {
       "name": "VidSrcMe RU",
@@ -67,23 +20,41 @@
       "tv_url": "https://vidsrc.fyi/embed/tv/"
     },
     {
-      "name": "Miruro API (Native)",
-      "engine": "native_miruro",
-      "id_type": "tmdb"
-    },
-    {
-      "name": "AnimePahe",
-      "id_type": "imdb",
-      "format_style": "query",
-      "movie_url": "https://animepahe.pro/embed/movie?imdb=",
-      "tv_url": "https://animepahe.pro/embed/tv?imdb="
-    },
-    {
-      "name": "2Embed",
-      "id_type": "imdb",
+      "name": "vidnest.fun",
+      "id_type": "tmdb",
       "format_style": "slash",
-      "movie_url": "https://www.2embed.cc/embed/",
-      "tv_url": "https://www.2embed.cc/embedtv/"
+      "movie_url": "https://vidnest.fun/movie/",
+      "tv_url": "https://vidnest.fun/tv/",
+      "anime_url": "https://vidnest.fun/anime/",
+      "anime_phase": "https://vidnest.fun/animepahe/"
+    },
+    {
+      "name": "vidlink.pro",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidlink.pro/movie/",
+      "tv_url": "https://vidlink.pro/tv/"
+    },
+    {
+      "name": "111movie",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://111movies.net/movie/",
+      "tv_url": "https://111movies.net/tv/"
+    },
+    {
+      "name": "vidfast.net",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.vidfast.net/movie/",
+      "tv_url": "https://www.vidfast.net/tv/"
+    },
+    {
+      "name": "AutoEmbed",
+      "id_type": "tmdb",
+      "format_style": "dash",
+      "movie_url": "https://autoembed.co/movie/tmdb/",
+      "tv_url": "https://autoembed.co/tv/tmdb/"
     }
   ],
   "no_streams_text": "No working streams found. Please select another server."

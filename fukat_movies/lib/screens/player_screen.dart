@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:window_manager/window_manager.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
 import '../services/ad_block_service.dart';
@@ -19,13 +20,11 @@ class PlayerScreen extends StatefulWidget {
   final String tmdbId;
   final bool isMovie;
   final String title;
-  final bool isAnime;
 
   PlayerScreen({
     required this.tmdbId,
     required this.isMovie,
     required this.title,
-    this.isAnime = false,
   });
 
   @override
@@ -90,7 +89,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final position = _mediaPlayer!.state.position.inSeconds;
       final duration = _mediaPlayer!.state.duration.inSeconds;
-      
+
       bool isCompleted = false;
       if (duration > 0 && position >= duration * 0.9) {
         isCompleted = true; // Mark as watched if 90% completed
@@ -114,24 +113,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _handleNetworkSpeedChange(NetworkSpeed speed) {
     if (_mediaPlayer == null || _availableQualities.isEmpty) return;
-    
+
     // User explicitly chose a quality, don't override them
     if (_userForcedQuality) return;
 
     if (speed == NetworkSpeed.slow) {
       // Find a lower quality stream (e.g. 360p or 480p)
       final lowQualityStream = _availableQualities.firstWhere(
-        (s) => s['quality'] == '360p' || s['quality'] == '480p' || s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
-        orElse: () => _availableQualities.last, // Usually last is lowest if sorted
+        (s) =>
+            s['quality'] == '360p' ||
+            s['quality'] == '480p' ||
+            s['quality'].toString().contains('360') ||
+            s['quality'].toString().contains('480'),
+        orElse: () =>
+            _availableQualities.last, // Usually last is lowest if sorted
       );
-      
+
       if (_selectedQuality != lowQualityStream['quality']) {
         Fluttertoast.showToast(msg: "Network slow, adjusting quality");
         _changeQuality(lowQualityStream, isAuto: true);
       }
     }
   }
-
 
   Future<void> _initializePlaybackData() async {
     // Fetch IMDB ID since some providers require it
@@ -218,16 +221,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       setState(() {
         currentUrl = playbackData['url'] as String;
         if (playbackData['headers'] != null) {
-          currentHeaders = Map<String, String>.from(playbackData['headers'] as Map);
+          currentHeaders = Map<String, String>.from(
+            playbackData['headers'] as Map,
+          );
         } else {
           currentHeaders = null;
         }
 
         if (playbackData['streams'] != null) {
           try {
-            _availableQualities = List<Map<String, dynamic>>.from(playbackData['streams']);
+            _availableQualities = List<Map<String, dynamic>>.from(
+              playbackData['streams'],
+            );
             if (_availableQualities.isNotEmpty) {
-              _selectedQuality = _availableQualities.first['quality']?.toString();
+              _selectedQuality = _availableQualities.first['quality']
+                  ?.toString();
             }
           } catch (e) {
             print("Error parsing streams: $e");
@@ -239,7 +247,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         if (playbackData['subtitles'] != null) {
           try {
-            _apiSubtitles = List<Map<String, dynamic>>.from(playbackData['subtitles']);
+            _apiSubtitles = List<Map<String, dynamic>>.from(
+              playbackData['subtitles'],
+            );
           } catch (e) {
             print("Error parsing API subtitles: $e");
           }
@@ -247,7 +257,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _apiSubtitles = [];
         }
 
-        _selectedSubtitleTrack = SubtitleTrack.no(); // Reset subtitle on new video load
+        _selectedSubtitleTrack =
+            SubtitleTrack.no(); // Reset subtitle on new video load
         _isFirstSubtitleLoad = true;
         _hasDubAvailable = playbackData['hasDub'] == true;
       });
@@ -263,9 +274,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  Future<void> _initializeNativePlayer(String url, {Map<String, String>? headers}) async {
+  Future<void> _initializeNativePlayer(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
     print("PlayerScreen: Initializing MediaKit player with URL: $url");
-    
+
     _mediaPlayer?.dispose();
 
     _mediaPlayer = Player(
@@ -280,7 +294,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) {
         setState(() {
           // Filter out the 'no()' track if it's in the list, we add it manually
-          final subs = tracks.subtitle.where((t) => t.id != 'no' && t.id != 'auto').toList();
+          final subs = tracks.subtitle
+              .where((t) => t.id != 'no' && t.id != 'auto')
+              .toList();
           _embeddedSubtitles = subs;
 
           if (_isFirstSubtitleLoad && subs.isNotEmpty) {
@@ -291,23 +307,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     });
 
-    await _mediaPlayer!.open(
-      Media(url, httpHeaders: headers),
-      play: true,
-    );
+    await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
 
     setState(() {});
   }
 
-  void _changeQuality(Map<String, dynamic> stream, {bool isAuto = false}) async {
+  void _changeQuality(
+    Map<String, dynamic> stream, {
+    bool isAuto = false,
+  }) async {
     if (_mediaPlayer == null) return;
-    
+
     if (!isAuto) {
-      _userForcedQuality = true; // User manually selected, disable auto-downgrade
+      _userForcedQuality =
+          true; // User manually selected, disable auto-downgrade
     }
 
     final position = _mediaPlayer!.state.position;
-    
+
     setState(() {
       _selectedQuality = stream['quality'];
       currentUrl = stream['url'];
@@ -322,13 +339,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     // Restore the selected subtitle track when quality changes
     _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
-    
+
     await _mediaPlayer!.seek(position);
   }
 
   void _changeSubtitle(SubtitleTrack track) {
     if (_mediaPlayer == null) return;
-    
+
     setState(() {
       _selectedSubtitleTrack = track;
     });
@@ -336,11 +353,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _mediaPlayer!.setSubtitleTrack(track);
   }
 
-  Future<Map<String, dynamic>?> _buildPlaybackUrl(Map<String, dynamic> provider) async {
+  Future<Map<String, dynamic>?> _buildPlaybackUrl(
+    Map<String, dynamic> provider,
+  ) async {
     final String engine = provider['engine'] ?? 'webview';
-    
+
     if (engine.startsWith('native_')) {
-      if (widget.isMovie) return null; // These aggregators are mostly anime (TV)
+      if (widget.isMovie)
+        return null; // These aggregators are mostly anime (TV)
       return await StreamingAggregatorService.getNativeStreamingUrl(
         title: widget.title,
         engine: engine,
@@ -370,18 +390,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // 2. Compile URL based on Format Styles
     String finalUrl = '';
-    
-    // When building the playback URL for anime titles:
-    if (widget.isAnime && provider.containsKey('anime_url')) {
-      final baseAnime = provider['anime_url'];
-      final phases = provider['anime_phase'];
-      // Use the same format logic (slash/query) for anime URLs.
-      final animeUrl = formatStyle == 'slash'
-          ? '$baseAnime$targetId/'
-          : '$baseAnime$targetId';
-      return {'url': animeUrl, 'phase': phases};
-    }
-
     if (widget.isMovie) {
       if (formatStyle == 'slash' || formatStyle == 'query_mix') {
         finalUrl = '$baseUrl$targetId';
@@ -408,7 +416,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           finalUrl = '$baseUrl$targetId-$currentSeason-$currentEpisode';
           break;
         default:
-          finalUrl = '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
+          finalUrl =
+              '$baseUrl$targetId/$currentSeason/$currentEpisode'; // Fallback
       }
     }
     return {'url': finalUrl};
@@ -479,7 +488,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 style: TextStyle(color: Colors.white),
               ),
             ],
-          )
+          ),
         ],
       );
     }
@@ -654,9 +663,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
           onWebViewCreated: (controller) {
             webViewController = controller;
           },
+          onEnterFullscreen: (controller) async {
+            FocusManager.instance.primaryFocus?.unfocus();
+            await windowManager.setFullScreen(true);
+          },
+          onExitFullscreen: (controller) async {
+            FocusManager.instance.primaryFocus?.unfocus();
+            await windowManager.setFullScreen(false);
+          },
           onCreateWindow: (controller, createWindowAction) async {
             // We return true to handle the window creation, but we DON'T actually
-            // create or show a new window! This effectively swallows the popup 
+            // create or show a new window! This effectively swallows the popup
             // silently in the background, making the ad invisible.
             print("Swallowed popup window creation in background");
             return true;
@@ -723,39 +740,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
+                color: const Color.fromARGB(
+                  255,
+                  14,
+                  13,
+                  13,
+                ), // Match user's black
                 borderRadius: BorderRadius.circular(4),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
-                  dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-                value: currentProviderIndex < providers.length
-                    ? currentProviderIndex
-                    : null,
-                isExpanded: true,
-                icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                items: List.generate(providers.length, (index) {
-                  return DropdownMenuItem<int>(
-                    value: index,
-                    child: Text(
-                      'Server ${index + 1}: ${providers[index]['name']}',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  );
-                }),
-                onChanged: (int? newIndex) {
-                  if (newIndex != null && newIndex != currentProviderIndex) {
-                    setState(() {
-                      currentProviderIndex = newIndex;
-                      _isPlaying = false;
-                      webViewController = null;
-                      _preparePlaybackUrl();
-                    });
-                  }
-                },
-              ),
+                  dropdownColor: const Color.fromARGB(
+                    255,
+                    14,
+                    13,
+                    13,
+                  ), // Match user's black
+                  value: currentProviderIndex < providers.length
+                      ? currentProviderIndex
+                      : null,
+                  isExpanded: true,
+                  icon: const Icon(
+                    Icons.arrow_drop_down,
+                    color: Colors.white70,
+                  ),
+                  items: List.generate(providers.length, (index) {
+                    return DropdownMenuItem<int>(
+                      value: index,
+                      child: Text(
+                        'Server ${index + 1}: ${providers[index]['name']}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    );
+                  }),
+                  onChanged: (int? newIndex) {
+                    if (newIndex != null && newIndex != currentProviderIndex) {
+                      setState(() {
+                        currentProviderIndex = newIndex;
+                        _isPlaying = false;
+                        webViewController = null;
+                        _preparePlaybackUrl();
+                      });
+                    }
+                  },
+                ),
               ),
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.fullscreen, color: Colors.white70),
+            tooltip: 'Toggle Fullscreen',
+            onPressed: () async {
+              FocusManager.instance.primaryFocus?.unfocus();
+              bool isFull = await windowManager.isFullScreen();
+              await windowManager.setFullScreen(!isFull);
+            },
           ),
         ],
       ),
@@ -763,12 +803,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildPlayerSection() {
-    return Container(
-      key: _playerKey,
-      child: _buildVideoPlayerArea(),
-    );
+    return Container(key: _playerKey, child: _buildVideoPlayerArea());
   }
-
 
   Widget _buildSeriesInfo() {
     return Padding(
@@ -782,7 +818,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Expanded(
                 child: Text(
                   widget.title,
-                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               WatchlistIconButton(
@@ -797,7 +837,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: Column(
                   children: [
                     Icon(Icons.thumb_up_alt_outlined, color: Colors.white),
-                    Text('RATE', style: TextStyle(color: Colors.white, fontSize: 10)),
+                    Text(
+                      'RATE',
+                      style: TextStyle(color: Colors.white, fontSize: 10),
+                    ),
                   ],
                 ),
                 onPressed: () {},
@@ -808,7 +851,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           if (!widget.isMovie)
             Text(
               'Season $currentSeason : Episode $currentEpisode',
-              style: TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.cyanAccent,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           SizedBox(height: 12),
           Text(
@@ -836,7 +883,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Text(
                 "More Like This",
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             Container(
@@ -886,7 +937,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           SizedBox(height: 8),
                           Text(
                             titleText,
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -910,12 +964,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onSelected: (value) {
         if (value == 'sub') {
           if (_isDub) {
-            setState(() { _isDub = false; });
+            setState(() {
+              _isDub = false;
+            });
             _preparePlaybackUrl();
           }
         } else if (value == 'dub') {
           if (!_isDub) {
-            setState(() { _isDub = true; });
+            setState(() {
+              _isDub = true;
+            });
             _preparePlaybackUrl();
           }
         } else if (value is Map<String, dynamic>) {
@@ -933,66 +991,99 @@ class _PlayerScreenState extends State<PlayerScreen> {
           items.add(
             const PopupMenuItem<dynamic>(
               enabled: false,
-              child: Text('Quality', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-            ),
-          );
-          items.addAll(_availableQualities.map((stream) {
-            return PopupMenuItem<dynamic>(
-              value: stream,
               child: Text(
-                stream['quality'] ?? 'Auto',
+                'Quality',
                 style: TextStyle(
-                  color: _selectedQuality == stream['quality'] ? Colors.redAccent : Colors.white,
-                  fontWeight: _selectedQuality == stream['quality'] ? FontWeight.bold : FontWeight.normal,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            );
-          }));
+            ),
+          );
+          items.addAll(
+            _availableQualities.map((stream) {
+              return PopupMenuItem<dynamic>(
+                value: stream,
+                child: Text(
+                  stream['quality'] ?? 'Auto',
+                  style: TextStyle(
+                    color: _selectedQuality == stream['quality']
+                        ? Colors.redAccent
+                        : Colors.white,
+                    fontWeight: _selectedQuality == stream['quality']
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              );
+            }),
+          );
 
           items.add(const PopupMenuDivider());
 
           items.add(
             const PopupMenuItem<dynamic>(
               enabled: false,
-              child: Text('Subtitles (CC)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Subtitles (CC)',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           );
-          
+
           items.add(
             PopupMenuItem<dynamic>(
               value: SubtitleTrack.no(),
               child: Text(
                 'Off',
                 style: TextStyle(
-                  color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white,
-                  fontWeight: _selectedSubtitleTrack.id == 'no' ? FontWeight.bold : FontWeight.normal,
+                  color: _selectedSubtitleTrack.id == 'no'
+                      ? Colors.redAccent
+                      : Colors.white,
+                  fontWeight: _selectedSubtitleTrack.id == 'no'
+                      ? FontWeight.bold
+                      : FontWeight.normal,
                 ),
               ),
             ),
           );
 
-          items.addAll(_apiSubtitles.map((sub) {
-            return PopupMenuItem<dynamic>(
-              value: 'api_sub_${sub['url']}',
-              child: Text(
-                sub['lang'] ?? 'Unknown',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.normal),
-              ),
-            );
-          }));
-
-          items.addAll(_embeddedSubtitles.map((sub) {
-            return PopupMenuItem<dynamic>(
-              value: sub,
-              child: Text(
-                sub.language ?? sub.title ?? sub.id,
-                style: TextStyle(
-                  color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white,
-                  fontWeight: _selectedSubtitleTrack.id == sub.id ? FontWeight.bold : FontWeight.normal,
+          items.addAll(
+            _apiSubtitles.map((sub) {
+              return PopupMenuItem<dynamic>(
+                value: 'api_sub_${sub['url']}',
+                child: Text(
+                  sub['lang'] ?? 'Unknown',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.normal,
+                  ),
                 ),
-              ),
-            );
-          }));
+              );
+            }),
+          );
+
+          items.addAll(
+            _embeddedSubtitles.map((sub) {
+              return PopupMenuItem<dynamic>(
+                value: sub,
+                child: Text(
+                  sub.language ?? sub.title ?? sub.id,
+                  style: TextStyle(
+                    color: _selectedSubtitleTrack.id == sub.id
+                        ? Colors.redAccent
+                        : Colors.white,
+                    fontWeight: _selectedSubtitleTrack.id == sub.id
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              );
+            }),
+          );
         }
         return items;
       },
@@ -1051,7 +1142,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     Container(
                       width: 320,
                       decoration: BoxDecoration(
-                        border: Border(left: BorderSide(color: Colors.white12, width: 1)),
+                        border: Border(
+                          left: BorderSide(color: Colors.white12, width: 1),
+                        ),
                       ),
                       child: EpisodeSidePanel(
                         tmdbId: widget.tmdbId,
@@ -1074,7 +1167,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         hasDub: _hasDubAvailable,
                         onAudioChanged: (isDub) {
                           if (_isDub != isDub) {
-                            setState(() { _isDub = isDub; });
+                            setState(() {
+                              _isDub = isDub;
+                            });
                             _preparePlaybackUrl();
                           }
                         },
@@ -1113,7 +1208,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         hasDub: _hasDubAvailable,
                         onAudioChanged: (isDub) {
                           if (_isDub != isDub) {
-                            setState(() { _isDub = isDub; });
+                            setState(() {
+                              _isDub = isDub;
+                            });
                             _preparePlaybackUrl();
                           }
                         },
