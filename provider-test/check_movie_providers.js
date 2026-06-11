@@ -17,11 +17,11 @@ const providers = [
     "tv_url": "https://www.2embed.cc/embedtv/"
   },
   {
-    "name": "NontonGo",
+    "name": "Bflix",
     "id_type": "tmdb",
     "format_style": "slash",
-    "movie_url": "https://www.nontongo.win/embed/movie/",
-    "tv_url": "https://www.nontongo.win/embed/tv/"
+    "movie_url": "https://www.bflix.run/embed/movie/",
+    "tv_url": "https://www.bflix.run/embed/tv/"
   }
 ];
 

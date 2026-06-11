@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
-enum NetworkSpeed { unknown, fast, slow, offline }
+enum NetworkSpeed { unknown, fast, moderate, slow, offline }
 
 class NetworkService {
   static final NetworkService _instance = NetworkService._internal();
@@ -62,9 +62,13 @@ class NetworkService {
       final endTime = DateTime.now();
       final duration = endTime.difference(startTime).inMilliseconds;
 
-      // If it takes more than 1500ms (1.5s) to get a simple 204 response, the network is likely slow
+      // If it takes more than 1500ms, the network is slow
+      // Between 500ms and 1500ms is moderate
+      // Under 500ms is fast
       if (duration > 1500) {
         _updateSpeed(NetworkSpeed.slow);
+      } else if (duration > 500) {
+        _updateSpeed(NetworkSpeed.moderate);
       } else {
         _updateSpeed(NetworkSpeed.fast);
       }

@@ -61,137 +61,172 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black, // Changed to solid black
-      padding: const EdgeInsets.all(12.0),
+      color: const Color(0xFF141414), // Dark background
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Top controls row
+          // Header: "Episodes" and "X seasons" badge
           Row(
             children: [
-              // Placeholder Sub & Dub dropdown
-              Expanded(
-                flex: 2,
-                child: widget.hasDub ? _buildDarkDropdown(
-                  value: widget.isDub ? 'Dub' : 'Sub',
-                  items: const ['Sub', 'Dub'],
-                  onChanged: (val) {
-                    if (val == 'Dub' && !widget.isDub) {
-                      widget.onAudioChanged(true);
-                    } else if (val == 'Sub' && widget.isDub) {
-                      widget.onAudioChanged(false);
-                    }
-                  },
-                ) : Container(
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(horizontal: 8,vertical: 15),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('Sub', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              const Icon(Icons.format_list_numbered, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Episodes',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(width: 8),
-              // Season selector (displayed as “Season X”)
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  '${widget.seasons.length} seasons',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          
+          // Seasons Row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text(
+                'SEASONS',
+                style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1.2),
+              ),
+              const SizedBox(width: 16),
               Expanded(
-                flex: 2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: widget.seasons.contains(_selectedSeason) ? _selectedSeason : (widget.seasons.isNotEmpty ? widget.seasons.first : null),
-                      isExpanded: true,
-                      dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-                      icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      items: widget.seasons
-                          .map((e) => DropdownMenuItem(value: e, child: Text('Season $e')))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null && val != _selectedSeason) {
-                          setState(() {
-                            _selectedSeason = val;
-                          });
-                          _loadEpisodesForActiveSeason(val);
-                        }
-                      },
-                    ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: widget.seasons.map((season) {
+                      final isSelected = season == _selectedSeason;
+                      return GestureDetector(
+                        onTap: () {
+                          if (!isSelected) {
+                            setState(() => _selectedSeason = season);
+                            _loadEpisodesForActiveSeason(season);
+                          }
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF8A2BE2) : const Color(0xFF222222),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: isSelected ? [
+                              BoxShadow(color: const Color(0xFF8A2BE2).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
+                            ] : null,
+                          ),
+                          child: Text(
+                            'S$season',
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          
+          // Episode Title / Indicator
+          Text(
+            'Season $_selectedSeason · Episode ${widget.currentEpisode}',
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 16),
-          // Episodes grid
+
+          // Episodes Row
           _isLoading 
             ? const Padding(
                 padding: EdgeInsets.symmetric(vertical: 32),
                 child: Center(child: CircularProgressIndicator(color: Color(0xFF8A2BE2))),
               )
-            : GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _currentEpisodes.length,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 60,
-              childAspectRatio: 1.2,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemBuilder: (ctx, idx) {
-              final ep = _currentEpisodes[idx];
-              final bool isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
-              return GestureDetector(
-                onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isPlaying ? const Color(0xFF8A2BE2) : const Color.fromARGB(255, 14, 13, 13), // Match user's black
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    ep,
-                    style: TextStyle(
-                      color: isPlaying ? Colors.white : Colors.white70,
-                      fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _currentEpisodes.map((ep) {
+                    final isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
+                    return GestureDetector(
+                      onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 12),
+                        width: 50,
+                        height: 50,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isPlaying ? Colors.cyan : const Color(0xFF222222),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: isPlaying ? [
+                              BoxShadow(color: Colors.cyan.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
+                            ] : null,
+                        ),
+                        child: Text(
+                          ep,
+                          style: TextStyle(
+                            color: isPlaying ? Colors.black : Colors.white70,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            },
+              ),
+          
+          const SizedBox(height: 32),
+          
+          // Legend (Aesthetic placeholder to match design)
+          Row(
+            children: [
+              _buildLegendDot(Colors.cyan, 'Now playing'),
+              const SizedBox(width: 16),
+              _buildLegendIcon(Icons.check, Colors.greenAccent, 'Available'),
+              const SizedBox(width: 16),
+              _buildLegendDot(Colors.greenAccent, 'New'),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDarkDropdown({
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: items.contains(value) ? value : (items.isNotEmpty ? items.first : null),
-          isExpanded: true,
-          dropdownColor: const Color.fromARGB(255, 14, 13, 13), // Match user's black
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 16),
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-          items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-          onChanged: onChanged,
+  Widget _buildLegendDot(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 12, height: 12,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
         ),
-      ),
+        const SizedBox(width: 6),
+        Text(text, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _buildLegendIcon(IconData icon, Color color, String text) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ],
     );
   }
 }

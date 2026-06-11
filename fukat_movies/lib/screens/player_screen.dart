@@ -31,8 +31,9 @@ class PlayerScreen extends StatefulWidget {
   _PlayerScreenState createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
+class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   // UI State
+  bool _isDesktopFullscreen = false;
   bool _showControls = true;
   bool _isFirstSubtitleLoad = true;
   InAppWebViewController? webViewController;
@@ -64,24 +65,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isMappingEpisode = false;
   String _currentEngine = 'webview';
   bool _userForcedQuality = false;
+  Timer? _autoQualityTimer;
   StreamSubscription<NetworkSpeed>? _networkSub;
+  Map<String, dynamic>? _mediaDetails;
 
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
     NetworkService().initialize();
     _networkSub = NetworkService().onSpeedChange.listen((speed) {
       if (mounted) _handleNetworkSpeedChange(speed);
     });
+    if (!widget.isMovie) {
+      _hasDubAvailable = true;
+    }
     _initializePlaybackData();
   }
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _networkSub?.cancel();
+    _autoQualityTimer?.cancel();
     _saveProgress();
     _mediaPlayer?.dispose();
     super.dispose();
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    if (mounted) {
+      setState(() {
+        _isDesktopFullscreen = true;
+      });
+    }
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    if (mounted) {
+      setState(() {
+        _isDesktopFullscreen = false;
+      });
+    }
   }
 
   void _saveProgress() {
@@ -117,22 +144,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // User explicitly chose a quality, don't override them
     if (_userForcedQuality) return;
 
+    // If speed drops significantly AFTER the timer, we auto-downgrade.
     if (speed == NetworkSpeed.slow) {
-      // Find a lower quality stream (e.g. 360p or 480p)
-      final lowQualityStream = _availableQualities.firstWhere(
+      _applyOptimalQualityForSpeed(speed);
+    }
+  }
+
+  void _applyOptimalQualityForSpeed(NetworkSpeed speed) {
+    if (_availableQualities.isEmpty) return;
+    
+    Map<String, dynamic> targetStream;
+    if (speed == NetworkSpeed.fast) {
+      targetStream = _availableQualities.first; // Usually highest
+    } else if (speed == NetworkSpeed.moderate) {
+      int midIndex = _availableQualities.length ~/ 2;
+      targetStream = _availableQualities[midIndex]; // Medium quality
+    } else {
+      // Find lowest quality
+      targetStream = _availableQualities.firstWhere(
         (s) =>
             s['quality'] == '360p' ||
             s['quality'] == '480p' ||
             s['quality'].toString().contains('360') ||
             s['quality'].toString().contains('480'),
-        orElse: () =>
-            _availableQualities.last, // Usually last is lowest if sorted
+        orElse: () => _availableQualities.last,
       );
+    }
 
-      if (_selectedQuality != lowQualityStream['quality']) {
-        Fluttertoast.showToast(msg: "Network slow, adjusting quality");
-        _changeQuality(lowQualityStream, isAuto: true);
-      }
+    if (_selectedQuality != targetStream['quality']) {
+      Fluttertoast.showToast(msg: "Auto-adjusting video quality to ${targetStream['quality']} based on internet speed");
+      _changeQuality(targetStream, isAuto: true);
     }
   }
 
@@ -143,18 +184,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       widget.isMovie,
     );
 
-    // Attempt to get banner/backdrop and season data if series
+    // Attempt to get full media details and banner/backdrop
     if (!widget.isMovie) {
-      final seriesData = await TmdbService.getSeriesDetails(
+      _mediaDetails = await TmdbService.getSeriesDetails(
         int.parse(widget.tmdbId),
       );
-      if (seriesData != null && seriesData['backdrop_path'] != null) {
+      if (_mediaDetails != null && _mediaDetails!['backdrop_path'] != null) {
         _bannerUrl =
-            'https://image.tmdb.org/t/p/w1280${seriesData['backdrop_path']}';
+            'https://image.tmdb.org/t/p/w1280${_mediaDetails!['backdrop_path']}';
       }
       // Load seasons list only
-      if (seriesData != null && seriesData['seasons'] != null) {
-        final seasonList = seriesData['seasons'] as List<dynamic>;
+      if (_mediaDetails != null && _mediaDetails!['seasons'] != null) {
+        final seasonList = _mediaDetails!['seasons'] as List<dynamic>;
         List<String> seasons = [];
         final now = DateTime.now();
         for (var season in seasonList) {
@@ -179,7 +220,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     } else {
-      // Movie banner logic could be added here
+      _mediaDetails = await TmdbService.getMovieDetails(int.parse(widget.tmdbId));
+      if (_mediaDetails != null && _mediaDetails!['backdrop_path'] != null) {
+        _bannerUrl =
+            'https://image.tmdb.org/t/p/w1280${_mediaDetails!['backdrop_path']}';
+      }
     }
 
     setState(() {
@@ -234,8 +279,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
               playbackData['streams'],
             );
             if (_availableQualities.isNotEmpty) {
-              _selectedQuality = _availableQualities.first['quality']
-                  ?.toString();
+              // 1. Always start playback in low quality for instant streaming
+              final lowQualityStream = _availableQualities.firstWhere(
+                (s) => s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
+                orElse: () => _availableQualities.last,
+              );
+              _selectedQuality = lowQualityStream['quality']?.toString();
+              currentUrl = lowQualityStream['url'] ?? currentUrl;
+              if (lowQualityStream['headers'] != null) {
+                currentHeaders = Map<String, String>.from(lowQualityStream['headers']);
+              }
+              _userForcedQuality = false; // Reset on new video
             }
           } catch (e) {
             print("Error parsing streams: $e");
@@ -309,6 +363,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
 
+    // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
+    _autoQualityTimer?.cancel();
+    _autoQualityTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted && !_userForcedQuality) {
+        _applyOptimalQualityForSpeed(NetworkService().currentSpeed);
+      }
+    });
+
     setState(() {});
   }
 
@@ -319,8 +381,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_mediaPlayer == null) return;
 
     if (!isAuto) {
-      _userForcedQuality =
-          true; // User manually selected, disable auto-downgrade
+      _userForcedQuality = true; // User manually selected, disable auto-downgrade
+      _autoQualityTimer?.cancel();
     }
 
     final position = _mediaPlayer!.state.position;
@@ -795,6 +857,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               FocusManager.instance.primaryFocus?.unfocus();
               bool isFull = await windowManager.isFullScreen();
               await windowManager.setFullScreen(!isFull);
+              if (mounted) {
+                setState(() {
+                  _isDesktopFullscreen = !isFull;
+                });
+              }
             },
           ),
         ],
@@ -862,6 +929,117 @@ class _PlayerScreenState extends State<PlayerScreen> {
             'In a world of magic where social standing is determined by arcane prowess...', // Placeholder synopsis
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopSidebar() {
+    final posterPath = _mediaDetails?['poster_path'];
+    final overview = _mediaDetails?['overview'] ?? 'No overview available.';
+    final genresList = _mediaDetails?['genres'] as List<dynamic>?;
+    final genres = genresList?.map((g) => g['name']).join(', ') ?? 'Unknown';
+    
+    final countriesList = _mediaDetails?['production_countries'] as List<dynamic>?;
+    final country = (countriesList != null && countriesList.isNotEmpty) ? countriesList[0]['name'] : 'Unknown';
+    
+    final vote = _mediaDetails?['vote_average'];
+    final rating = vote != null ? vote.toStringAsFixed(1) : 'N/A';
+    
+    final dateStr = widget.isMovie ? (_mediaDetails?['release_date']) : (_mediaDetails?['first_air_date']);
+    final year = (dateStr != null && dateStr.toString().length >= 4) ? dateStr.toString().substring(0, 4) : 'N/A';
+
+    final breadcrumbLabel = widget.isMovie ? 'Movie' : 'TV';
+
+    return Container(
+      color: const Color(0xFF141414),
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          if (posterPath != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                'https://image.tmdb.org/t/p/w500$posterPath',
+                fit: BoxFit.cover,
+                width: double.infinity,
+              ),
+            ),
+          const SizedBox(height: 16),
+          
+          // Breadcrumbs
+          Row(
+            children: [
+              const Icon(Icons.home, color: Colors.white54, size: 16),
+              const SizedBox(width: 8),
+              Text('Home / $breadcrumbLabel / ${widget.title}', 
+                style: const TextStyle(color: Colors.white54, fontSize: 12)
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          
+          // Info Card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E24), // Darker card background
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4))
+              ]
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.isMovie ? widget.title : '${widget.title} - Season $currentSeason',
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                
+                // Badges Row
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(4)),
+                      child: Text('IMDb $rating', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.white54), borderRadius: BorderRadius.circular(4)),
+                      child: const Text('1080P', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(year, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                
+                // Synopsis
+                Text(
+                  overview,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                
+                // Country & Genres
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 12, height: 1.6),
+                    children: [
+                      const TextSpan(text: 'Country: ', style: TextStyle(color: Colors.white54)),
+                      TextSpan(text: '$country\n', style: const TextStyle(color: Colors.white)),
+                      const TextSpan(text: 'Genres: ', style: TextStyle(color: Colors.white54)),
+                      TextSpan(text: genres, style: const TextStyle(color: Colors.white)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
         ],
       ),
     );
@@ -1100,26 +1278,59 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final bool isWide = false; // Force mobile layout everywhere
+    final bool isWide = screenWidth > 800; // Enable desktop split layout
 
     return Scaffold(
-      backgroundColor: Color(0xFF141414), // Dark background matching design
-      appBar: isWide
-          ? null
-          : AppBar(
-              title: Text(
-                widget.title,
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              backgroundColor: Colors.black,
-              iconTheme: IconThemeData(color: Colors.white),
-              actions: [
-                if (_availableQualities.isNotEmpty) _buildSettingsMenu(),
-              ],
-            ),
+      backgroundColor: const Color(0xFF141414), // Dark background matching design
+      appBar: _isDesktopFullscreen ? null : AppBar(
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (_availableQualities.isNotEmpty) _buildSettingsMenu(),
+        ],
+      ),
       body: SafeArea(
-        child: isWide
-            ? Row(
+        child: _isDesktopFullscreen
+            ? Stack(
+                children: [
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black,
+                      child: Center(
+                        child: _buildPlayerSection(),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.fullscreen_exit, color: Colors.white, size: 28),
+                        onPressed: () async {
+                          await windowManager.setFullScreen(false);
+                          if (mounted) {
+                            setState(() {
+                              _isDesktopFullscreen = false;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : isWide
+                ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     flex: 3,
@@ -1132,49 +1343,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             child: _buildPlayerSection(),
                           ),
                           _buildServerSelector(),
-                          _buildSeriesInfo(),
+                          if (!widget.isMovie)
+                            EpisodeSidePanel(
+                              tmdbId: widget.tmdbId,
+                              currentSeason: currentSeason,
+                              currentEpisode: currentEpisode,
+                              seasons: _seasons,
+                              onEpisodeSelected: (season, episode) {
+                                setState(() {
+                                  currentSeason = season;
+                                  currentEpisode = episode;
+                                  currentProviderIndex = 0;
+                                  _isPlaying = false;
+                                  webViewController = null;
+                                });
+                                _preparePlaybackUrl().then((_) {
+                                  _startPlayback();
+                                });
+                              },
+                              isDub: _isDub,
+                              hasDub: _hasDubAvailable,
+                              onAudioChanged: (isDub) {
+                                if (_isDub != isDub) {
+                                  setState(() {
+                                    _isDub = isDub;
+                                  });
+                                  _preparePlaybackUrl();
+                                }
+                              },
+                            ),
                           _buildMoreLikeThis(),
                         ],
                       ),
                     ),
                   ),
-                  if (!widget.isMovie)
-                    Container(
-                      width: 320,
-                      decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: Colors.white12, width: 1),
-                        ),
-                      ),
-                      child: EpisodeSidePanel(
-                        tmdbId: widget.tmdbId,
-                        currentSeason: currentSeason,
-                        currentEpisode: currentEpisode,
-                        seasons: _seasons,
-                        onEpisodeSelected: (season, episode) {
-                          setState(() {
-                            currentSeason = season;
-                            currentEpisode = episode;
-                            currentProviderIndex = 0;
-                            _isPlaying = false;
-                            webViewController = null;
-                          });
-                          _preparePlaybackUrl().then((_) {
-                            _startPlayback();
-                          });
-                        },
-                        isDub: _isDub,
-                        hasDub: _hasDubAvailable,
-                        onAudioChanged: (isDub) {
-                          if (_isDub != isDub) {
-                            setState(() {
-                              _isDub = isDub;
-                            });
-                            _preparePlaybackUrl();
-                          }
-                        },
+                  Container(
+                    width: 350,
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: Colors.white12, width: 1),
                       ),
                     ),
+                    child: _buildDesktopSidebar(),
+                  ),
                 ],
               )
             : SingleChildScrollView(

@@ -112,6 +112,15 @@ class TmdbService {
     }
   }
 
+  // Get Movie details
+  static Future<Map<String, dynamic>?> getMovieDetails(int tmdbId) async {
+    try {
+      return await _fetchAndDecode('/movie/$tmdbId');
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Get TV series details
   static Future<Map<String, dynamic>?> getSeriesDetails(int tmdbId) async {
     try {
