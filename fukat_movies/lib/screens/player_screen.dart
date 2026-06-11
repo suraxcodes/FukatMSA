@@ -37,6 +37,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   bool _showControls = true;
   bool _isFirstSubtitleLoad = true;
   InAppWebViewController? webViewController;
+  HeadlessInAppWebView? headlessWebView;
+  bool _isExtracting = false;
   int currentProviderIndex = 0;
   String? currentImdbId;
   bool isInitializing = true;
@@ -86,6 +88,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    headlessWebView?.dispose();
     _networkSub?.cancel();
     _autoQualityTimer?.cancel();
     _saveProgress();
@@ -321,7 +324,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           webViewController!.loadUrl(
             urlRequest: URLRequest(url: WebUri(currentUrl)),
           );
-        } else if (_currentEngine.startsWith('native_')) {
+        } else if (_currentEngine == 'native_extractor') {
+          _startHeadlessExtractor(currentUrl);
+        } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
           _initializeNativePlayer(currentUrl, headers: currentHeaders);
         }
       }
@@ -420,7 +425,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   ) async {
     final String engine = provider['engine'] ?? 'webview';
 
-    if (engine.startsWith('native_')) {
+    if (engine.startsWith('native_') && engine != 'native_extractor') {
       if (widget.isMovie)
         return null; // These aggregators are mostly anime (TV)
       return await StreamingAggregatorService.getNativeStreamingUrl(
@@ -495,7 +500,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         webViewController!.loadUrl(
           urlRequest: URLRequest(url: WebUri(currentUrl)),
         );
-      } else if (_currentEngine.startsWith('native_')) {
+      } else if (_currentEngine == 'native_extractor') {
+        _startHeadlessExtractor(currentUrl);
+      } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
         _initializeNativePlayer(currentUrl, headers: currentHeaders);
       }
     }
@@ -508,6 +515,184 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
       lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
     );
+  }
+
+  Future<void> _startHeadlessExtractor(String embedUrl) async {
+    setState(() {
+      _isExtracting = true;
+    });
+
+    headlessWebView?.dispose();
+    headlessWebView = HeadlessInAppWebView(
+      initialUrlRequest: URLRequest(url: WebUri(embedUrl)),
+      initialSettings: InAppWebViewSettings(
+        useShouldInterceptRequest: true,
+        useShouldInterceptAjaxRequest: true,
+        useShouldInterceptFetchRequest: true,
+        javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+      ),
+      initialUserScripts: UnmodifiableListView<UserScript>([
+        UserScript(
+          source: """
+            // 1. Override fetch to sniff out .m3u8 and .mp4
+            var originalFetch = window.fetch;
+            window.fetch = function() {
+                var reqUrl = arguments[0];
+                if (typeof reqUrl === 'string' && (reqUrl.includes('.m3u8') || reqUrl.includes('.mp4'))) {
+                    console.log("STREAM_FOUND: " + reqUrl);
+                }
+                return originalFetch.apply(this, arguments);
+            };
+            
+            // 2. Auto-click play buttons
+            setTimeout(function() {
+              var buttons = document.querySelectorAll('button, .play-button, .vjs-big-play-button, #play-btn, .plyr__control--overlaid');
+              buttons.forEach(function(b) { b.click(); });
+              
+              var iframes = document.querySelectorAll('iframe');
+              iframes.forEach(function(f) {
+                 f.contentWindow.postMessage('play', '*');
+              });
+              
+              // Click the absolute center of the screen
+              var x = window.innerWidth / 2;
+              var y = window.innerHeight / 2;
+              var centerEl = document.elementFromPoint(x, y);
+              if (centerEl) centerEl.click();
+              
+              document.body.click();
+            }, 1000);
+            
+            // Try clicking again after 3 seconds
+            setTimeout(function() {
+              var buttons = document.querySelectorAll('button, .play-button, .vjs-big-play-button, #play-btn, .plyr__control--overlaid');
+              buttons.forEach(function(b) { b.click(); });
+              
+              var x = window.innerWidth / 2;
+              var y = window.innerHeight / 2;
+              var centerEl = document.elementFromPoint(x, y);
+              if (centerEl) centerEl.click();
+            }, 3000);
+          """,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+          forMainFrameOnly: false, // Critical: Inject into all iframes!
+        )
+      ]),
+      onWebViewCreated: (controller) {
+        print("Headless Extractor: Created for $embedUrl");
+      },
+      onLoadStart: (controller, url) {
+        print("Headless Extractor: Started loading $url");
+      },
+      shouldInterceptRequest: (controller, request) async {
+        final urlStr = request.url.toString();
+        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
+          print("Headless Extractor: Found stream! $urlStr");
+          if (mounted && _isExtracting) {
+            setState(() {
+              _isExtracting = false;
+            });
+            
+            // Try to extract referer, otherwise use the origin of the embedUrl
+            final referer = request.headers?['Referer']?.toString() ?? 
+                            request.headers?['referer']?.toString() ?? 
+                            request.headers?['Origin']?.toString() ?? 
+                            Uri.parse(embedUrl).origin + '/';
+                            
+            final Map<String, String> headers = {'Referer': referer};
+            
+            headlessWebView?.dispose();
+            headlessWebView = null;
+            
+            _initializeNativePlayer(urlStr, headers: headers);
+          }
+        }
+        return null; // Return null to continue loading the request normally
+      },
+      shouldInterceptAjaxRequest: (controller, request) async {
+        final urlStr = request.url.toString();
+        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
+          print("Headless Extractor (AJAX): Found stream! $urlStr");
+          if (mounted && _isExtracting) {
+            setState(() {
+              _isExtracting = false;
+            });
+            
+            final referer = Uri.parse(embedUrl).origin + '/';
+            final Map<String, String> headers = {'Referer': referer};
+            
+            headlessWebView?.dispose();
+            headlessWebView = null;
+            
+            _initializeNativePlayer(urlStr, headers: headers);
+          }
+        }
+        return null;
+      },
+      shouldInterceptFetchRequest: (controller, request) async {
+        final urlStr = request.url.toString();
+        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
+          print("Headless Extractor (FETCH): Found stream! $urlStr");
+          if (mounted && _isExtracting) {
+            setState(() {
+              _isExtracting = false;
+            });
+            
+            final referer = Uri.parse(embedUrl).origin + '/';
+            final Map<String, String> headers = {'Referer': referer};
+            
+            headlessWebView?.dispose();
+            headlessWebView = null;
+            
+            _initializeNativePlayer(urlStr, headers: headers);
+          }
+        }
+        return null;
+      },
+      onConsoleMessage: (controller, consoleMessage) {
+        final msg = consoleMessage.message;
+        if (msg.startsWith("STREAM_FOUND: ")) {
+          final urlStr = msg.replaceFirst("STREAM_FOUND: ", "");
+          print("Headless Extractor (CONSOLE): Found stream! $urlStr");
+          if (mounted && _isExtracting) {
+            setState(() {
+              _isExtracting = false;
+            });
+            
+            final referer = Uri.parse(embedUrl).origin + '/';
+            final Map<String, String> headers = {'Referer': referer};
+            
+            headlessWebView?.dispose();
+            headlessWebView = null;
+            
+            _initializeNativePlayer(urlStr, headers: headers);
+          }
+        }
+      },
+      onLoadStop: (controller, url) async {
+        print("Headless Extractor: Stopped loading $url");
+      },
+    );
+
+    try {
+      await headlessWebView?.run();
+      // Setup a 15-second timeout to trigger failover if extraction takes too long
+      Future.delayed(const Duration(seconds: 15), () {
+        if (mounted && _isExtracting) {
+          print("Headless Extractor: Timeout reached, triggering failover");
+          headlessWebView?.dispose();
+          headlessWebView = null;
+          setState(() {
+            _isExtracting = false;
+          });
+          _triggerFailover();
+        }
+      });
+    } catch (e) {
+      print("Headless Extractor error: $e");
+      _triggerFailover();
+    }
   }
 
   void _triggerFailover() {
@@ -602,7 +787,23 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       );
     }
 
-    if (_currentEngine.startsWith('native_')) {
+    if (_isExtracting) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.purpleAccent),
+            SizedBox(height: 16),
+            Text(
+              "Bypassing provider and extracting native stream...",
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_currentEngine.startsWith('native_') || _currentEngine == 'native_extractor') {
       if (_videoController != null) {
         return Stack(
           children: [

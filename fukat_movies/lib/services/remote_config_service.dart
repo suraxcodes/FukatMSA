@@ -22,7 +22,8 @@ class RemoteConfigService {
             final movieUrl = p['movie_url']?.toString() ?? '';
             final tvUrl = p['tv_url']?.toString() ?? '';
             bool isVidsrc =
-                movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
+                (movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc')) &&
+                p['engine'] != 'native_extractor';
             return !isVidsrc;
           }).toList();
         }
@@ -44,7 +45,8 @@ class RemoteConfigService {
               final movieUrl = p['movie_url']?.toString() ?? '';
               final tvUrl = p['tv_url']?.toString() ?? '';
               bool isVidsrc =
-                  movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc');
+                  (movieUrl.contains('vidsrc') || tvUrl.contains('vidsrc')) &&
+                  p['engine'] != 'native_extractor';
               if (isVidsrc) {
                 print(
                   "⚠️ Removing incompatible provider on Windows: ${p['name']}",

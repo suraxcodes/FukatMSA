@@ -28,20 +28,38 @@ class StreamingAggregatorService {
 
   static Future<Map<String, dynamic>?> _getMiruroStream(String title, int s, int ep, bool isDub) async {
     try {
-      final query = Uri.encodeComponent(title);
-      final searchUrl = Uri.parse('$miruroApiUrl/search?query=$query');
-      print("Aggregator: Miruro fetching search url: $searchUrl");
+      // 1. Resolve Anilist ID via official GraphQL API (Reliable)
+      final anilistUrl = Uri.parse('https://graphql.anilist.co');
+      final anilistQuery = '''
+        query (\$search: String) {
+          Media(search: \$search, type: ANIME, sort: SEARCH_MATCH) {
+            id
+          }
+        }
+      ''';
+      
+      print("Aggregator: Fetching Anilist ID for $title");
+      final anilistRes = await http.post(
+        anilistUrl,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode({
+          'query': anilistQuery,
+          'variables': {'search': title},
+        }),
+      ).timeout(const Duration(seconds: 15));
 
-      final searchRes = await http.get(searchUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 15));
-      print("Aggregator: Miruro search status: ${searchRes.statusCode}");
-
-      if (searchRes.statusCode == 200) {
-        final searchData = json.decode(searchRes.body);
-        final results = searchData['results'] as List<dynamic>? ?? [];
-        if (results.isNotEmpty) {
-          final anilistId = results.first['id'];
-          print("Aggregator: Miruro Anilist ID: $anilistId");
+      if (anilistRes.statusCode == 200) {
+        final anilistData = json.decode(anilistRes.body);
+        final media = anilistData['data']?['Media'];
+        
+        if (media != null && media['id'] != null) {
+          final anilistId = media['id'];
+          print("Aggregator: Anilist ID resolved: $anilistId");
           
+          // 2. Fetch episodes list from Miruro
           final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
           print("Aggregator: Miruro fetching episodes list: $epUrl");
           
@@ -143,7 +161,7 @@ class StreamingAggregatorService {
           }
         }
       } else {
-        print("Miruro API Error: Status Code ${searchRes.statusCode} Body: ${searchRes.body}");
+        print("Miruro API Error: Status Code ${anilistRes.statusCode} Body: ${anilistRes.body}");
       }
     } catch (e) {
       print("Miruro API Exception: $e");
