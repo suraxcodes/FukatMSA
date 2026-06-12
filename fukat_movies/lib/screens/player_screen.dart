@@ -114,6 +114,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
+    StreamingAggregatorService.preferredProvider = null; // Reset preferred provider for new anime session
     windowManager.addListener(this);
     NetworkService().initialize();
     _networkSub = NetworkService().onSpeedChange.listen((speed) {
@@ -197,21 +198,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   void _applyOptimalQualityForSpeed(NetworkSpeed speed) {
     if (_availableQualities.isEmpty) return;
     
+    // Only auto-switch within the current provider to prevent accidental failovers
+    String providerSuffix = "";
+    if (_selectedQuality != null && _selectedQuality!.contains('(')) {
+      providerSuffix = "(${_selectedQuality!.split('(').last.replaceAll(')', '').trim()})";
+    }
+
+    var providerStreams = _availableQualities;
+    if (providerSuffix.isNotEmpty) {
+      providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(providerSuffix)).toList();
+      if (providerStreams.isEmpty) providerStreams = _availableQualities;
+    }
+    
     Map<String, dynamic> targetStream;
     if (speed == NetworkSpeed.fast) {
-      targetStream = _availableQualities.first; // Usually highest
+      targetStream = providerStreams.first; // Usually highest
     } else if (speed == NetworkSpeed.moderate) {
-      int midIndex = _availableQualities.length ~/ 2;
-      targetStream = _availableQualities[midIndex]; // Medium quality
+      int midIndex = providerStreams.length ~/ 2;
+      targetStream = providerStreams[midIndex]; // Medium quality
     } else {
       // Find lowest quality
-      targetStream = _availableQualities.firstWhere(
+      targetStream = providerStreams.firstWhere(
         (s) =>
-            s['quality'] == '360p' ||
-            s['quality'] == '480p' ||
             s['quality'].toString().contains('360') ||
             s['quality'].toString().contains('480'),
-        orElse: () => _availableQualities.last,
+        orElse: () => providerStreams.last,
       );
     }
 
@@ -322,10 +333,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               playbackData['streams'],
             );
             if (_availableQualities.isNotEmpty) {
-              // 1. Always start playback in low quality for instant streaming
-              final lowQualityStream = _availableQualities.firstWhere(
+              // 1. Always start playback with the top priority provider
+              String topProviderSuffix = "";
+              if (_availableQualities.first['quality'].toString().contains('(')) {
+                topProviderSuffix = "(${_availableQualities.first['quality'].toString().split('(').last.replaceAll(')', '').trim()})";
+              }
+
+              var providerStreams = _availableQualities;
+              if (topProviderSuffix.isNotEmpty) {
+                providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(topProviderSuffix)).toList();
+              }
+
+              final lowQualityStream = providerStreams.firstWhere(
                 (s) => s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
-                orElse: () => _availableQualities.last,
+                orElse: () => providerStreams.last,
               );
               _selectedQuality = lowQualityStream['quality']?.toString();
               currentUrl = lowQualityStream['url'] ?? currentUrl;
@@ -431,6 +452,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _mediaPlayer!.stream.position.listen((pos) {
       if (pos > Duration.zero) {
         _lastPlaybackPosition = pos;
+      }
+      
+      // Remember preferred working provider after 15s of playback
+      if (pos.inSeconds > 15 && _selectedQuality != null && _selectedQuality!.contains('(')) {
+        final prov = _selectedQuality!.split('(').last.replaceAll(')', '').trim();
+        if (StreamingAggregatorService.preferredProvider != prov) {
+          StreamingAggregatorService.preferredProvider = prov;
+          print("Aggregator: Saved preferred provider: $prov");
+        }
       }
     });
 
