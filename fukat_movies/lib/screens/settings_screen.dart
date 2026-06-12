@@ -149,51 +149,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-          const Divider(color: Colors.white24, height: 32),
-          Text(
-            'Custom Repository',
-            style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _repoController,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              labelText: 'Repository URL',
-              labelStyle: const TextStyle(color: Colors.white70),
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                onPressed: _openScanner,
-                tooltip: 'Scan QR Code',
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator(color: Colors.redAccent))
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saveRepo,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-                    child: const Text('Save'),
-                  ),
-                ),
-                if (_savedRepoUrl != null) ...[
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _clearRepo,
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
-                      child: const Text('Clear'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
         ],
       ),
     );
