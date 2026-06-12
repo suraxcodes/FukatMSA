@@ -204,12 +204,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         for (var season in seasonList) {
           final sNum = season['season_number'];
           if (sNum != null && sNum > 0) {
-            // Check air_date to avoid showing unreleased seasons
             final airDateStr = season['air_date'];
             if (airDateStr != null) {
               try {
                 final airDate = DateTime.parse(airDateStr);
-                if (airDate.isAfter(now)) continue;
+                if (airDate.isAfter(now.add(const Duration(days: 7)))) continue;
               } catch (_) {}
             }
             seasons.add(sNum.toString());

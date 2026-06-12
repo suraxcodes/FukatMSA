@@ -12,8 +12,10 @@ import '../monetization/services/ad_service.dart';
 import '../widgets/auth_popup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-
-
+import '../services/manga_service.dart';
+import 'manga_details_screen.dart';
+import '../widgets/manga_watchlist_icon_button.dart';
+import 'dart:io' show Platform;
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -23,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _trendingMovies = [];
   List<dynamic> _trendingTv = [];
   List<dynamic> _trendingAnime = [];
+  List<dynamic> _trendingManga = [];
   bool _isLoading = true;
 
   @override
@@ -68,6 +71,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final anime = await TmdbService.getTrendingAnime();
       setState(() {
         _trendingAnime = anime;
+      });
+      
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // 5. Fetch Manga (from Anilist via MangaService)
+      final manga = await MangaService.getTrendingManga();
+      setState(() {
+        _trendingManga = manga;
         _isLoading = false;
       });
     } catch (e) {
@@ -76,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildMediaRow(String title, List<dynamic> items, bool isMovie) {
+  Widget _buildMediaRow(String title, List<dynamic> items, bool isMovie, {bool isAnime = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -141,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               title: titleText,
                               posterPath: posterPath,
                               isMovie: isMovie,
+                              isAnime: isAnime,
                             ),
                           ),
                           ValueListenableBuilder<Box>(
@@ -169,6 +181,80 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(
                         titleText,
                         style: TextStyle(color: Colors.white70),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMangaRow(String title, List<dynamic> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            title,
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(
+          height: 250,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final coverImage = item['coverImage']?['large'];
+              final titleText = item['title']?['english'] ?? item['title']?['romaji'] ?? 'Unknown Manga';
+
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MangaDetailsScreen(manga: item),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 150,
+                  margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Column(
+                    children: [
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: coverImage != null
+                                ? Image.network(
+                                    coverImage,
+                                    headers: const {'User-Agent': 'Mozilla/5.0'},
+                                    height: 200,
+                                    width: 150,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(height: 200, width: 150, color: Colors.grey),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: MangaWatchlistIconButton(manga: item),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        titleText,
+                        style: const TextStyle(color: Colors.white70),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -388,8 +474,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   if (_trendingMovies.isNotEmpty) 
                     _buildMediaRow("Trending Movies", _trendingMovies, true),
-                  _buildMediaRow("Trending TV Shows", _trendingTv, false),
-                  _buildMediaRow("Trending Anime", _trendingAnime, false),
+                  if (_trendingTv.isNotEmpty)
+                    _buildMediaRow("Trending TV Shows", _trendingTv, false),
+                  if (_trendingAnime.isNotEmpty)
+                    _buildMediaRow("Trending Anime", _trendingAnime, false, isAnime: true),
+                  if (_trendingManga.isNotEmpty)
+                    _buildMangaRow("Trending Manga", _trendingManga),
                   _buildContinueWatchingRow(),
                 ],
               ),

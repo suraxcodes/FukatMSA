@@ -71,12 +71,12 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
           final poster = season['poster_path'];
           
           if (number == null || number <= 0) return const SizedBox.shrink();
-          
+
           final airDateStr = season['air_date'];
           if (airDateStr != null) {
             try {
               final airDate = DateTime.parse(airDateStr);
-              if (airDate.isAfter(DateTime.now())) return const SizedBox.shrink();
+              if (airDate.isAfter(DateTime.now().add(const Duration(days: 7)))) return const SizedBox.shrink();
             } catch (_) {}
           }
           

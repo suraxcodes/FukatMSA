@@ -7,6 +7,7 @@ class WatchlistIconButton extends StatefulWidget {
   final String title;
   final String? posterPath;
   final bool isMovie;
+  final bool isAnime;
   final bool showText;
   final String text;
 
@@ -15,6 +16,7 @@ class WatchlistIconButton extends StatefulWidget {
     required this.title,
     required this.posterPath,
     required this.isMovie,
+    this.isAnime = false,
     this.showText = false,
     this.text = 'SAVE',
   });
@@ -45,6 +47,7 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
       widget.title,
       widget.posterPath,
       widget.isMovie,
+      isAnime: widget.isAnime,
     );
     // Refresh saved state after toggle
     final saved = await WatchlistService.isSaved(widget.tmdbId);

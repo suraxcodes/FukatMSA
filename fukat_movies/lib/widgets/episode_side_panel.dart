@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/tmdb_service.dart';
+import 'package:flutter/gestures.dart';
 
 /// Side panel (or bottom panel on mobile) UI for selecting season & episode.
 /// It receives the list of seasons and episodes per season generated from TMDB.
@@ -105,10 +107,14 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: widget.seasons.map((season) {
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context).copyWith(
+                    dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse, PointerDeviceKind.trackpad},
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: widget.seasons.map((season) {
                       final isSelected = season == _selectedSeason;
                       return GestureDetector(
                         onTap: () {
@@ -139,6 +145,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                     }).toList(),
                   ),
                 ),
+              ),
               ),
             ],
           ),

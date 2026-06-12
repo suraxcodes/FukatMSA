@@ -17,7 +17,7 @@ class WatchlistService {
 
   static ValueListenable<Box<dynamic>> get listenable => Hive.box('watchlistBox').listenable();
 
-  static Future<void> toggleItem(String tmdbId, String title, String? posterPath, bool isMovie) async {
+  static Future<void> toggleItem(String tmdbId, String title, String? posterPath, bool isMovie, {bool isAnime = false}) async {
     final box = await _getBox();
     if (box.containsKey(tmdbId)) {
       await box.delete(tmdbId);
@@ -27,6 +27,7 @@ class WatchlistService {
         'title': title,
         'posterPath': posterPath,
         'isMovie': isMovie,
+        'isAnime': isAnime,
         'savedAt': DateTime.now().toIso8601String(),
       });
     }

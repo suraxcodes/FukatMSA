@@ -138,13 +138,18 @@ class TmdbService {
       final now = DateTime.now();
       
       return episodes.where((ep) {
-        if (ep['air_date'] == null) return false;
-        try {
-          final airDate = DateTime.parse(ep['air_date']);
-          return airDate.isBefore(now) || airDate.isAtSameMomentAs(now);
-        } catch (_) {
-          return false;
+        if (ep['episode_number'] == null) return false;
+        if (ep['air_date'] != null) {
+          try {
+            final airDate = DateTime.parse(ep['air_date']);
+            // 7-day buffer: shows episodes airing this week (to handle timezones & early leaks) 
+            // but hides episodes weeks or months in the future.
+            if (airDate.isAfter(now.add(const Duration(days: 7)))) {
+              return false;
+            }
+          } catch (_) {}
         }
+        return true;
       }).toList();
     } catch (_) {
       return [];

@@ -9,6 +9,9 @@ import 'series_detail_screen.dart';
 import '../widgets/watchlist_icon_button.dart';
 import '../services/supabase_auth_service.dart';
 import '../monetization/services/ad_service.dart';
+import '../services/manga_service.dart';
+import 'manga_details_screen.dart';
+import '../widgets/manga_watchlist_icon_button.dart';
 
 class SearchScreen extends StatefulWidget {
   @override
@@ -20,6 +23,7 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _movieResults = [];
   List<dynamic> _seriesResults = [];
   List<dynamic> _animeResults = [];
+  List<dynamic> _mangaResults = [];
   bool _isLoading = false;
   Timer? _debounce;
   List<dynamic> _recentOpenedItems = [];
@@ -96,6 +100,7 @@ class _SearchScreenState extends State<SearchScreen> {
           _movieResults = [];
           _seriesResults = [];
           _animeResults = [];
+          _mangaResults = [];
         });
       }
     });
@@ -107,6 +112,8 @@ class _SearchScreenState extends State<SearchScreen> {
     });
     try {
       final results = await TmdbService.searchMedia(query);
+      final mangaRes = await MangaService.searchManga(query);
+      
       setState(() {
         _movieResults = results.where((item) => 
             item['media_type'] == 'movie' && 
@@ -119,6 +126,8 @@ class _SearchScreenState extends State<SearchScreen> {
         _animeResults = results.where((item) => 
             item['genre_ids']?.contains(16) ?? false).toList();
             
+        _mangaResults = mangaRes;
+            
         _isLoading = false;
       });
     } catch (e) {
@@ -128,7 +137,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  Widget _buildSection(String sectionTitle, List<dynamic> items, {Widget? trailing}) {
+  Widget _buildSection(String sectionTitle, List<dynamic> items, {Widget? trailing, bool isAnime = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -209,6 +218,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             title: title,
                             posterPath: posterPath,
                             isMovie: isMovie,
+                            isAnime: isAnime,
                           ),
                         ),
                       ],
@@ -231,6 +241,88 @@ class _SearchScreenState extends State<SearchScreen> {
   ],
 );
 }
+
+  Widget _buildMangaSection(String sectionTitle, List<dynamic> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
+          child: Text(
+            sectionTitle,
+            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(
+          height: 230,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final coverImage = item['coverImage']?['large'];
+              final titleText = item['title']?['english'] ?? item['title']?['romaji'] ?? 'Unknown Manga';
+
+              return Container(
+                width: 120,
+                margin: const EdgeInsets.only(right: 12.0),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MangaDetailsScreen(manga: item),
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: coverImage != null
+                                  ? Image.network(
+                                      coverImage,
+                                      headers: const {'User-Agent': 'Mozilla/5.0'},
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                    )
+                                  : Container(
+                                      color: Colors.grey[800],
+                                      child: const Center(
+                                        child: Icon(Icons.book, color: Colors.white38, size: 40),
+                                      ),
+                                    ),
+                            ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: MangaWatchlistIconButton(manga: item),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        titleText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildRecentSearches() {
     if (_recentOpenedItems.isEmpty && _recentSearches.isEmpty) {
@@ -336,7 +428,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ? Center(child: CircularProgressIndicator(color: Colors.redAccent))
           : _searchController.text.isEmpty
               ? _buildRecentSearches()
-              : (_movieResults.isEmpty && _seriesResults.isEmpty && _animeResults.isEmpty)
+              : (_movieResults.isEmpty && _seriesResults.isEmpty && _animeResults.isEmpty && _mangaResults.isEmpty)
                   ? Center(
                       child: Text(
                         'No results',
@@ -348,7 +440,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     if (_movieResults.isNotEmpty) _buildSection('Movies', _movieResults),
                     if (_seriesResults.isNotEmpty) _buildSection('TV Shows', _seriesResults),
-                    if (_animeResults.isNotEmpty) _buildSection('Anime', _animeResults),
+                    if (_animeResults.isNotEmpty) _buildSection('Anime', _animeResults, isAnime: true),
+                    if (_mangaResults.isNotEmpty) _buildMangaSection('Manga', _mangaResults),
                     SizedBox(height: 20),
                   ],
                 ),
