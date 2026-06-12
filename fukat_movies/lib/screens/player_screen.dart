@@ -109,7 +109,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   String? _extractedStreamUrl;
   Map<String, String>? _extractedStreamHeaders;
   Timer? _extractionTimer;
+  Timer? _bufferingTimer;
   Duration _lastPlaybackPosition = Duration.zero;
+  bool _hasRestoredPosition = false;
 
   @override
   void initState() {
@@ -133,6 +135,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _networkSub?.cancel();
     _autoQualityTimer?.cancel();
     _extractionTimer?.cancel();
+    _bufferingTimer?.cancel();
     _saveProgress();
     _mediaPlayer?.dispose();
     super.dispose();
@@ -430,6 +433,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       print("MediaKit Log [${event.level}]: ${event.text}");
     });
 
+    _mediaPlayer!.stream.buffering.listen((isBuffering) {
+      if (isBuffering) {
+        _bufferingTimer?.cancel();
+        _bufferingTimer = Timer(const Duration(seconds: 8), () {
+          if (mounted && _mediaPlayer != null && _mediaPlayer!.state.buffering) {
+            print("MediaKit Buffering Timeout! Stream might be corrupt or dead. Forcing failover...");
+            _triggerFailover();
+          }
+        });
+      } else {
+        _bufferingTimer?.cancel();
+      }
+    });
+
     _videoController = VideoController(_mediaPlayer!);
 
     _mediaPlayer!.stream.tracks.listen((tracks) {
@@ -464,11 +481,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       }
     });
 
+    _mediaPlayer!.stream.duration.listen((duration) {
+      if (mounted && !_hasRestoredPosition && _lastPlaybackPosition > Duration.zero && duration > Duration.zero) {
+        _hasRestoredPosition = true;
+        _mediaPlayer!.seek(_lastPlaybackPosition);
+        print("Restored playback position to $_lastPlaybackPosition");
+      }
+    });
+
+    _hasRestoredPosition = false;
     await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
-    
-    if (_lastPlaybackPosition > Duration.zero) {
-      await _mediaPlayer!.seek(_lastPlaybackPosition);
-    }
 
     // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
     _autoQualityTimer?.cancel();
@@ -505,16 +527,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       }
     });
 
+    _hasRestoredPosition = false;
     await _mediaPlayer!.open(
       Media(currentUrl, httpHeaders: currentHeaders),
       play: true,
     );
     // Restore the selected subtitle track when quality changes
     _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
-
-    if (_lastPlaybackPosition > Duration.zero) {
-      await _mediaPlayer!.seek(_lastPlaybackPosition);
-    }
   }
 
   void _changeSubtitle(SubtitleTrack track) {
