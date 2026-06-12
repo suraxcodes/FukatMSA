@@ -6,6 +6,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import '../services/remote_config_service.dart';
 import '../services/tmdb_service.dart';
@@ -15,6 +17,36 @@ import '../services/network_service.dart';
 import '../widgets/episode_side_panel.dart';
 import '../services/continue_watching_service.dart';
 import '../widgets/watchlist_icon_button.dart';
+
+// Helper to set fullscreen on both desktop and mobile
+Future<void> _setFullScreen(bool enable) async {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    // Desktop: use window_manager
+    if (enable) {
+      await windowManager.setFullScreen(true);
+    } else {
+      await windowManager.setFullScreen(false);
+    }
+  } else {
+    // Mobile: use SystemChrome immersive mode
+    if (enable) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+  }
+}
+
+// In the button callback replace direct windowManager calls with _setFullScreen
+// Example usage inside the UI builder:
+// onTap: () async {
+//   bool isFull = Platform.isWindows || Platform.isLinux || Platform.isMacOS
+//       ? await windowManager.isFullScreen()
+//       : MediaQuery.of(context).padding.top == 0; // rough mobile check
+//   await _setFullScreen(!isFull);
+// },
+
+
 
 class PlayerScreen extends StatefulWidget {
   final String tmdbId;
@@ -64,12 +96,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   SubtitleTrack _selectedSubtitleTrack = SubtitleTrack.no();
   bool _isDub = false;
   bool _hasDubAvailable = false;
+  bool _hasSubAvailable = true;
   bool _isMappingEpisode = false;
   String _currentEngine = 'webview';
   bool _userForcedQuality = false;
   Timer? _autoQualityTimer;
   StreamSubscription<NetworkSpeed>? _networkSub;
   Map<String, dynamic>? _mediaDetails;
+  
+  // Headless Extractor State
+  List<String> _extractedSubtitles = [];
+  String? _extractedStreamUrl;
+  Map<String, String>? _extractedStreamHeaders;
+  Timer? _extractionTimer;
+  Duration _lastPlaybackPosition = Duration.zero;
 
   @override
   void initState() {
@@ -91,6 +131,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     headlessWebView?.dispose();
     _networkSub?.cancel();
     _autoQualityTimer?.cancel();
+    _extractionTimer?.cancel();
     _saveProgress();
     _mediaPlayer?.dispose();
     super.dispose();
@@ -317,6 +358,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             SubtitleTrack.no(); // Reset subtitle on new video load
         _isFirstSubtitleLoad = true;
         _hasDubAvailable = playbackData['hasDub'] == true;
+        _hasSubAvailable = playbackData['hasSub'] == true;
+        
+        // Auto-correct global _isDub state if the requested track doesn't exist
+        if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
+          _isDub = false;
+        } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
+          _isDub = true;
+        }
       });
       if (_isPlaying) {
         if (_currentEngine == 'webview' && webViewController != null) {
@@ -337,14 +386,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     Map<String, String>? headers,
   }) async {
     print("PlayerScreen: Initializing MediaKit player with URL: $url");
+    print("PlayerScreen: Headers: $headers");
 
     _mediaPlayer?.dispose();
 
     _mediaPlayer = Player(
       configuration: const PlayerConfiguration(
         bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
+        logLevel: MPVLogLevel.debug,
       ),
     );
+
+    _mediaPlayer!.stream.error.listen((error) {
+      print("MediaKit Error: $error");
+      if (mounted) {
+        // Trigger failover if we hit an error opening the stream (e.g. DNS failure)
+        _triggerFailover();
+      }
+    });
+    
+    _mediaPlayer!.stream.log.listen((event) {
+      print("MediaKit Log [${event.level}]: ${event.text}");
+    });
 
     _videoController = VideoController(_mediaPlayer!);
 
@@ -365,7 +428,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       }
     });
 
+    _mediaPlayer!.stream.position.listen((pos) {
+      if (pos > Duration.zero) {
+        _lastPlaybackPosition = pos;
+      }
+    });
+
     await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
+    
+    if (_lastPlaybackPosition > Duration.zero) {
+      await _mediaPlayer!.seek(_lastPlaybackPosition);
+    }
 
     // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
     _autoQualityTimer?.cancel();
@@ -390,6 +463,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     final position = _mediaPlayer!.state.position;
+    if (position > Duration.zero) {
+      _lastPlaybackPosition = position;
+    }
 
     setState(() {
       _selectedQuality = stream['quality'];
@@ -406,7 +482,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     // Restore the selected subtitle track when quality changes
     _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
 
-    await _mediaPlayer!.seek(position);
+    if (_lastPlaybackPosition > Duration.zero) {
+      await _mediaPlayer!.seek(_lastPlaybackPosition);
+    }
   }
 
   void _changeSubtitle(SubtitleTrack track) {
@@ -425,8 +503,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     final String engine = provider['engine'] ?? 'webview';
 
     if (engine.startsWith('native_') && engine != 'native_extractor') {
-      if (widget.isMovie)
-        return null; // These aggregators are mostly anime (TV)
       return await StreamingAggregatorService.getNativeStreamingUrl(
         title: widget.title,
         engine: engine,
@@ -519,6 +595,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Future<void> _startHeadlessExtractor(String embedUrl) async {
     setState(() {
       _isExtracting = true;
+      _extractedSubtitles.clear();
+      _extractedStreamUrl = null;
+      _extractedStreamHeaders = null;
     });
 
     headlessWebView?.dispose();
@@ -534,12 +613,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: """
-            // 1. Override fetch to sniff out .m3u8 and .mp4
+            // 1. Override fetch to sniff out .m3u8, .mp4, .vtt, .srt
             var originalFetch = window.fetch;
             window.fetch = function() {
                 var reqUrl = arguments[0];
-                if (typeof reqUrl === 'string' && (reqUrl.includes('.m3u8') || reqUrl.includes('.mp4'))) {
-                    console.log("STREAM_FOUND: " + reqUrl);
+                if (typeof reqUrl === 'string') {
+                    if (reqUrl.includes('.m3u8') || reqUrl.includes('.mp4')) {
+                        console.log("STREAM_FOUND: " + reqUrl);
+                    } else if (reqUrl.includes('.vtt') || reqUrl.includes('.srt')) {
+                        console.log("SUBTITLE_FOUND: " + reqUrl);
+                    }
                 }
                 return originalFetch.apply(this, arguments);
             };
@@ -586,87 +669,35 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       },
       shouldInterceptRequest: (controller, request) async {
         final urlStr = request.url.toString();
-        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
-          print("Headless Extractor: Found stream! $urlStr");
-          if (mounted && _isExtracting) {
-            setState(() {
-              _isExtracting = false;
-            });
-            
-            // Try to extract referer, otherwise use the origin of the embedUrl
-            final referer = request.headers?['Referer']?.toString() ?? 
-                            request.headers?['referer']?.toString() ?? 
-                            request.headers?['Origin']?.toString() ?? 
-                            Uri.parse(embedUrl).origin + '/';
-                            
-            final Map<String, String> headers = {'Referer': referer};
-            
-            headlessWebView?.dispose();
-            headlessWebView = null;
-            
-            _initializeNativePlayer(urlStr, headers: headers);
-          }
-        }
-        return null; // Return null to continue loading the request normally
+        final referer = request.headers?['Referer']?.toString() ?? 
+                        request.headers?['referer']?.toString() ?? 
+                        request.headers?['Origin']?.toString() ?? 
+                        Uri.parse(embedUrl).origin + '/';
+        _checkExtractedUrl(urlStr, referer);
+        return null;
       },
       shouldInterceptAjaxRequest: (controller, request) async {
         final urlStr = request.url.toString();
-        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
-          print("Headless Extractor (AJAX): Found stream! $urlStr");
-          if (mounted && _isExtracting) {
-            setState(() {
-              _isExtracting = false;
-            });
-            
-            final referer = Uri.parse(embedUrl).origin + '/';
-            final Map<String, String> headers = {'Referer': referer};
-            
-            headlessWebView?.dispose();
-            headlessWebView = null;
-            
-            _initializeNativePlayer(urlStr, headers: headers);
-          }
-        }
+        final referer = Uri.parse(embedUrl).origin + '/';
+        _checkExtractedUrl(urlStr, referer);
         return null;
       },
       shouldInterceptFetchRequest: (controller, request) async {
         final urlStr = request.url.toString();
-        if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
-          print("Headless Extractor (FETCH): Found stream! $urlStr");
-          if (mounted && _isExtracting) {
-            setState(() {
-              _isExtracting = false;
-            });
-            
-            final referer = Uri.parse(embedUrl).origin + '/';
-            final Map<String, String> headers = {'Referer': referer};
-            
-            headlessWebView?.dispose();
-            headlessWebView = null;
-            
-            _initializeNativePlayer(urlStr, headers: headers);
-          }
-        }
+        final referer = Uri.parse(embedUrl).origin + '/';
+        _checkExtractedUrl(urlStr, referer);
         return null;
       },
       onConsoleMessage: (controller, consoleMessage) {
         final msg = consoleMessage.message;
         if (msg.startsWith("STREAM_FOUND: ")) {
           final urlStr = msg.replaceFirst("STREAM_FOUND: ", "");
-          print("Headless Extractor (CONSOLE): Found stream! $urlStr");
-          if (mounted && _isExtracting) {
-            setState(() {
-              _isExtracting = false;
-            });
-            
-            final referer = Uri.parse(embedUrl).origin + '/';
-            final Map<String, String> headers = {'Referer': referer};
-            
-            headlessWebView?.dispose();
-            headlessWebView = null;
-            
-            _initializeNativePlayer(urlStr, headers: headers);
-          }
+          final referer = Uri.parse(embedUrl).origin + '/';
+          _checkExtractedUrl(urlStr, referer);
+        } else if (msg.startsWith("SUBTITLE_FOUND: ")) {
+          final urlStr = msg.replaceFirst("SUBTITLE_FOUND: ", "");
+          final referer = Uri.parse(embedUrl).origin + '/';
+          _checkExtractedUrl(urlStr, referer);
         }
       },
       onLoadStop: (controller, url) async {
@@ -678,8 +709,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       await headlessWebView?.run();
       // Setup a 15-second timeout to trigger failover if extraction takes too long
       Future.delayed(const Duration(seconds: 15), () {
-        if (mounted && _isExtracting) {
-          print("Headless Extractor: Timeout reached, triggering failover");
+        if (mounted && _isExtracting && _extractedStreamUrl == null) {
+          print("Headless Extractor: Timeout reached without finding stream, triggering failover");
           headlessWebView?.dispose();
           headlessWebView = null;
           setState(() {
@@ -694,8 +725,86 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
   }
 
+  void _checkExtractedUrl(String urlStr, String referer) {
+    if (!_isExtracting) return;
+    
+    if (urlStr.contains('.vtt') || urlStr.contains('.srt')) {
+      if (!_extractedSubtitles.contains(urlStr)) {
+        print("Headless Extractor: Found subtitle! $urlStr");
+        _extractedSubtitles.add(urlStr);
+      }
+    } else if ((urlStr.contains('.m3u8') || urlStr.contains('.mp4')) && _extractedStreamUrl == null) {
+      print("Headless Extractor: Found stream! $urlStr");
+      _extractedStreamUrl = urlStr;
+      _extractedStreamHeaders = {'Referer': referer};
+      
+      // Wait 2 seconds for subtitles to load before initializing player
+      _extractionTimer?.cancel();
+      _extractionTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted && _isExtracting) {
+          setState(() {
+            _isExtracting = false;
+            // Add extracted subtitles to the API subtitles list
+            for (var subUrl in _extractedSubtitles) {
+              if (!_apiSubtitles.any((s) => s['url'] == subUrl)) {
+                _apiSubtitles.add({
+                  'lang': 'Extracted ${subUrl.split('.').last.toUpperCase()}',
+                  'url': subUrl
+                });
+              }
+            }
+          });
+          
+          headlessWebView?.dispose();
+          headlessWebView = null;
+          
+          _initializeNativePlayer(_extractedStreamUrl!, headers: _extractedStreamHeaders);
+        }
+      });
+    }
+  }
+
   void _triggerFailover() {
-    print("Provider failed, triggering failover to next provider...");
+    print("Provider/Stream failed, triggering failover...");
+    
+    if (_mediaPlayer != null) {
+      final pos = _mediaPlayer!.state.position;
+      if (pos > Duration.zero) {
+        _lastPlaybackPosition = pos;
+      }
+    }
+
+    // First, try fallback within the same aggregator if it provided multiple streams
+    if (_availableQualities.isNotEmpty) {
+      _availableQualities.removeWhere((s) => s['url'] == currentUrl);
+      if (_availableQualities.isNotEmpty) {
+        final nextStream = _availableQualities.first;
+        print("Failover: Trying next available stream from aggregator: ${nextStream['quality']}");
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Stream failed. Switching to backup stream..."),
+            backgroundColor: Colors.orangeAccent,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _changeQuality(nextStream, isAuto: true);
+        return;
+      }
+    }
+
+    print("All aggregated streams failed. Moving to next engine/provider...");
+    
+    // Show a popup on screen
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("All streams failed. Switching to next server..."),
+        backgroundColor: Colors.redAccent,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
     setState(() {
       currentProviderIndex++;
     });
@@ -1030,7 +1139,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     return DropdownMenuItem<int>(
                       value: index,
                       child: Text(
-                        'Server ${index + 1}: ${providers[index]['name']}',
+                        '${providers[index]['name']}',
                         style: const TextStyle(color: Colors.white),
                       ),
                     );
@@ -1038,6 +1147,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   onChanged: (int? newIndex) {
                     if (newIndex != null && newIndex != currentProviderIndex) {
                       setState(() {
+                        if (_mediaPlayer != null) {
+                          final pos = _mediaPlayer!.state.position;
+                          if (pos > Duration.zero) _lastPlaybackPosition = pos;
+                        }
                         currentProviderIndex = newIndex;
                         _isPlaying = false;
                         webViewController = null;
@@ -1049,6 +1162,71 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               ),
             ),
           ),
+          const SizedBox(width: 12),
+          // Sub/Dub Toggle right next to Server Selector
+          if (_currentEngine.startsWith('native_') && (_hasDubAvailable || _hasSubAvailable))
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Sub Button
+                if (_hasSubAvailable)
+                  GestureDetector(
+                    onTap: () {
+                      if (_isDub) {
+                        setState(() => _isDub = false);
+                        _preparePlaybackUrl();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: !_isDub ? Colors.redAccent : const Color(0xFF222222),
+                        borderRadius: (_hasSubAvailable && _hasDubAvailable)
+                            ? const BorderRadius.horizontal(left: Radius.circular(8))
+                            : BorderRadius.circular(8),
+                        border: Border.all(color: !_isDub ? Colors.redAccent : Colors.white24),
+                      ),
+                      child: Text(
+                        'SUB',
+                        style: TextStyle(
+                          color: !_isDub ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                
+                // Dub Button
+                if (_hasDubAvailable)
+                  GestureDetector(
+                    onTap: () {
+                      if (!_isDub) {
+                        setState(() => _isDub = true);
+                        _preparePlaybackUrl();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isDub ? Colors.redAccent : const Color(0xFF222222),
+                        borderRadius: (_hasSubAvailable && _hasDubAvailable)
+                            ? const BorderRadius.horizontal(right: Radius.circular(8))
+                            : BorderRadius.circular(8),
+                        border: Border.all(color: _isDub ? Colors.redAccent : Colors.white24),
+                      ),
+                      child: Text(
+                        'DUB',
+                        style: TextStyle(
+                          color: _isDub ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.fullscreen, color: Colors.white70),
@@ -1365,6 +1543,43 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       },
       itemBuilder: (context) {
         List<PopupMenuEntry<dynamic>> items = [];
+        
+        if (_hasDubAvailable) {
+          items.addAll([
+            const PopupMenuItem<dynamic>(
+              enabled: false,
+              child: Text(
+                'Audio Track',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            PopupMenuItem<dynamic>(
+              value: 'sub',
+              child: Text(
+                'Subbed (Original)',
+                style: TextStyle(
+                  color: !_isDub ? Colors.redAccent : Colors.white,
+                  fontWeight: !_isDub ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+            PopupMenuItem<dynamic>(
+              value: 'dub',
+              child: Text(
+                'Dubbed (English)',
+                style: TextStyle(
+                  color: _isDub ? Colors.redAccent : Colors.white,
+                  fontWeight: _isDub ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+            const PopupMenuDivider(),
+          ]);
+        }
+
         if (_availableQualities.isNotEmpty) {
           items.add(
             const PopupMenuItem<dynamic>(
@@ -1398,21 +1613,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           );
 
           items.add(const PopupMenuDivider());
+        }
 
-          items.add(
-            const PopupMenuItem<dynamic>(
-              enabled: false,
-              child: Text(
-                'Subtitles (CC)',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
+        items.add(
+          const PopupMenuItem<dynamic>(
+            enabled: false,
+            child: Text(
+              'Subtitles (CC)',
+              style: TextStyle(
+                color: Colors.grey,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          );
+          ),
+        );
 
-          items.add(
+        items.add(
             PopupMenuItem<dynamic>(
               value: SubtitleTrack.no(),
               child: Text(
@@ -1462,7 +1678,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               );
             }),
           );
-        }
         return items;
       },
     );
@@ -1556,6 +1771,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                   currentProviderIndex = 0;
                                   _isPlaying = false;
                                   webViewController = null;
+                                  _lastPlaybackPosition = Duration.zero;
                                 });
                                 _preparePlaybackUrl().then((_) {
                                   _startPlayback();
@@ -1610,6 +1826,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             currentProviderIndex = 0;
                             _isPlaying = false;
                             webViewController = null;
+                            _lastPlaybackPosition = Duration.zero;
                           });
                           _preparePlaybackUrl().then((_) {
                             _startPlayback();

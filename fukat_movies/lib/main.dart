@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:media_kit/media_kit.dart';
+import 'dart:io';
 import 'package:window_manager/window_manager.dart';
 import 'services/remote_config_service.dart';
 import 'services/supabase_auth_service.dart';
@@ -11,7 +13,10 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   // 1. Ensure structural widget engine bindings are completely ready
   WidgetsFlutterBinding.ensureInitialized();
-  await windowManager.ensureInitialized();
+  // Initialize window manager only on desktop platforms
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await windowManager.ensureInitialized();
+  }
   MediaKit.ensureInitialized();
 
   bool initializationSuccess = false;
@@ -74,6 +79,14 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         primaryColor: Colors.redAccent,
         scaffoldBackgroundColor: const Color(0xFF141414), // Netflix deep dark configuration
+      ),
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.touch,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.trackpad,
+        },
       ),
       // If critical local storage/Supabase setups failed, show an explicit error screen instead of crashing
       home: isInitializedSuccessfully 

@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ad_block_config.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AdBlockService {
-  // Remote config URL (GitHub raw). Replace with your actual URL.
-  static const String _remoteConfigUrl = 'https://raw.githubusercontent.com/suraxcodes/FukatMSA/main/adblock_config.json';
+  // Remote config URL (GitHub raw). Hidden in your assets/.env file!
+  static String get _remoteConfigUrl => dotenv.env['ADBLOCK_CONFIG_URL'] ?? '';
 
   // In‑memory cache of the loaded config
   static AdBlockConfig? _cachedConfig;

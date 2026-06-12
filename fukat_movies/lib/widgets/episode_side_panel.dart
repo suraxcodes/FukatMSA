@@ -196,9 +196,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                   }).toList(),
                 ),
               ),
-          
-          const SizedBox(height: 32),
-          
+          const SizedBox(height: 16),
           // Legend (Aesthetic placeholder to match design)
           Row(
             children: [
