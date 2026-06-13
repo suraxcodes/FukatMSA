@@ -105,9 +105,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Map<String, dynamic>? _mediaDetails;
   
   // Headless Extractor State
-  List<String> _extractedSubtitles = [];
-  String? _extractedStreamUrl;
-  Map<String, String>? _extractedStreamHeaders;
+  Map<int, HeadlessInAppWebView> _headlessExtractors = {};
+  List<int> _successfulProviders = [];
+  Map<int, Map<String, dynamic>> _extractedProviderData = {};
+  bool _parallelExtractionComplete = false;
+  int _activeConcurrency = 0;
+  final int _maxConcurrency = 3;
+  List<int> _extractionQueue = [];
   Timer? _extractionTimer;
   Timer? _bufferingTimer;
   Duration _lastPlaybackPosition = Duration.zero;
@@ -131,7 +135,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
-    headlessWebView?.dispose();
+    for (var webview in _headlessExtractors.values) {
+      webview.dispose();
+    }
+    _headlessExtractors.clear();
     _networkSub?.cancel();
     _autoQualityTimer?.cancel();
     _extractionTimer?.cancel();
@@ -285,265 +292,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     setState(() {
-      currentImdbId =
-          imdbId ?? widget.tmdbId; // Fallback to TMDB if IMDB not found
+      currentImdbId = imdbId ?? widget.tmdbId;
       isInitializing = false;
-      _preparePlaybackUrl();
-    });
-  }
-
-  Future<void> _preparePlaybackUrl() async {
-    final providersList = RemoteConfigService.activeProviders;
-    if (currentProviderIndex >= providersList.length) {
-      setState(() {
-        currentUrl = "";
-        currentHeaders = null;
-      });
-      return;
-    }
-
-    var activeProvider = providersList[currentProviderIndex];
-    _currentEngine = activeProvider['engine'] ?? 'webview';
-
-    setState(() {
-      _isMappingEpisode = _currentEngine.startsWith('native_');
-    });
-
-    final playbackData = await _buildPlaybackUrl(activeProvider);
-
-    if (!mounted) return;
-
-    setState(() {
-      _isMappingEpisode = false;
-    });
-
-    if (playbackData == null || playbackData['url'] == null) {
-      _triggerFailover();
-    } else {
-      setState(() {
-        currentUrl = playbackData['url'] as String;
-        if (playbackData['headers'] != null) {
-          currentHeaders = Map<String, String>.from(
-            playbackData['headers'] as Map,
-          );
-        } else {
-          currentHeaders = null;
-        }
-
-        if (playbackData['streams'] != null) {
-          try {
-            _availableQualities = List<Map<String, dynamic>>.from(
-              playbackData['streams'],
-            );
-            if (_availableQualities.isNotEmpty) {
-              // 1. Always start playback with the top priority provider
-              String topProviderSuffix = "";
-              if (_availableQualities.first['quality'].toString().contains('(')) {
-                topProviderSuffix = "(${_availableQualities.first['quality'].toString().split('(').last.replaceAll(')', '').trim()})";
-              }
-
-              var providerStreams = _availableQualities;
-              if (topProviderSuffix.isNotEmpty) {
-                providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(topProviderSuffix)).toList();
-              }
-
-              final lowQualityStream = providerStreams.firstWhere(
-                (s) => s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
-                orElse: () => providerStreams.last,
-              );
-              _selectedQuality = lowQualityStream['quality']?.toString();
-              currentUrl = lowQualityStream['url'] ?? currentUrl;
-              if (lowQualityStream['headers'] != null) {
-                currentHeaders = Map<String, String>.from(lowQualityStream['headers']);
-              }
-              _userForcedQuality = false; // Reset on new video
-            }
-          } catch (e) {
-            print("Error parsing streams: $e");
-          }
-        } else {
-          _availableQualities = [];
-          _selectedQuality = null;
-        }
-
-        if (playbackData['subtitles'] != null) {
-          try {
-            _apiSubtitles = List<Map<String, dynamic>>.from(
-              playbackData['subtitles'],
-            );
-          } catch (e) {
-            print("Error parsing API subtitles: $e");
-          }
-        } else {
-          _apiSubtitles = [];
-        }
-
-        _selectedSubtitleTrack =
-            SubtitleTrack.no(); // Reset subtitle on new video load
-        _isFirstSubtitleLoad = true;
-        _hasDubAvailable = playbackData['hasDub'] == true;
-        _hasSubAvailable = playbackData['hasSub'] == true;
-        
-        // Auto-correct global _isDub state if the requested track doesn't exist
-        if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
-          _isDub = false;
-        } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
-          _isDub = true;
-        }
-      });
-      if (_isPlaying) {
-        if (_currentEngine == 'webview' && webViewController != null) {
-          webViewController!.loadUrl(
-            urlRequest: URLRequest(url: WebUri(currentUrl)),
-          );
-        } else if (_currentEngine == 'native_extractor') {
-          _startHeadlessExtractor(currentUrl);
-        } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
-          _initializeNativePlayer(currentUrl, headers: currentHeaders);
-        }
-      }
-    }
-  }
-
-  Future<void> _initializeNativePlayer(
-    String url, {
-    Map<String, String>? headers,
-  }) async {
-    print("PlayerScreen: Initializing MediaKit player with URL: $url");
-    print("PlayerScreen: Headers: $headers");
-
-    _mediaPlayer?.dispose();
-
-    _mediaPlayer = Player(
-      configuration: const PlayerConfiguration(
-        bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
-        logLevel: MPVLogLevel.debug,
-      ),
-    );
-
-    _mediaPlayer!.stream.error.listen((error) {
-      print("MediaKit Error: $error");
-      if (mounted) {
-        // Trigger failover if we hit an error opening the stream (e.g. DNS failure)
-        _triggerFailover();
-      }
-    });
-    
-    _mediaPlayer!.stream.log.listen((event) {
-      print("MediaKit Log [${event.level}]: ${event.text}");
-    });
-
-    _mediaPlayer!.stream.buffering.listen((isBuffering) {
-      if (isBuffering) {
-        _bufferingTimer?.cancel();
-        _bufferingTimer = Timer(const Duration(seconds: 8), () {
-          if (mounted && _mediaPlayer != null && _mediaPlayer!.state.buffering) {
-            print("MediaKit Buffering Timeout! Stream might be corrupt or dead. Forcing failover...");
-            _triggerFailover();
-          }
-        });
-      } else {
-        _bufferingTimer?.cancel();
-      }
-    });
-
-    _videoController = VideoController(_mediaPlayer!);
-
-    _mediaPlayer!.stream.tracks.listen((tracks) {
-      if (mounted) {
-        setState(() {
-          // Filter out the 'no()' track if it's in the list, we add it manually
-          final subs = tracks.subtitle
-              .where((t) => t.id != 'no' && t.id != 'auto')
-              .toList();
-          _embeddedSubtitles = subs;
-
-          if (_isFirstSubtitleLoad && subs.isNotEmpty) {
-            _isFirstSubtitleLoad = false;
-            _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
-          }
-        });
-      }
-    });
-
-    _mediaPlayer!.stream.position.listen((pos) {
-      if (pos > Duration.zero) {
-        _lastPlaybackPosition = pos;
-      }
       
-      // Remember preferred working provider after 15s of playback
-      if (pos.inSeconds > 15 && _selectedQuality != null && _selectedQuality!.contains('(')) {
-        final prov = _selectedQuality!.split('(').last.replaceAll(')', '').trim();
-        if (StreamingAggregatorService.preferredProvider != prov) {
-          StreamingAggregatorService.preferredProvider = prov;
-          print("Aggregator: Saved preferred provider: $prov");
-        }
-      }
+      _parallelExtractionComplete = false;
+      _successfulProviders.clear();
+      _extractedProviderData.clear();
+      _activeConcurrency = 0;
+      _isPlaying = false;
+      
+      final providersList = RemoteConfigService.activeProviders;
+      _extractionQueue = List.generate(providersList.length, (index) => index);
+      _processExtractionQueue(List<Map<String, dynamic>>.from(providersList));
     });
-
-    _mediaPlayer!.stream.duration.listen((duration) {
-      if (mounted && !_hasRestoredPosition && _lastPlaybackPosition > Duration.zero && duration > Duration.zero) {
-        _hasRestoredPosition = true;
-        _mediaPlayer!.seek(_lastPlaybackPosition);
-        print("Restored playback position to $_lastPlaybackPosition");
-      }
-    });
-
-    _hasRestoredPosition = false;
-    await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
-
-    // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
-    _autoQualityTimer?.cancel();
-    _autoQualityTimer = Timer(const Duration(seconds: 15), () {
-      if (mounted && !_userForcedQuality) {
-        _applyOptimalQualityForSpeed(NetworkService().currentSpeed);
-      }
-    });
-
-    setState(() {});
-  }
-
-  void _changeQuality(
-    Map<String, dynamic> stream, {
-    bool isAuto = false,
-  }) async {
-    if (_mediaPlayer == null) return;
-
-    if (!isAuto) {
-      _userForcedQuality = true; // User manually selected, disable auto-downgrade
-      _autoQualityTimer?.cancel();
-    }
-
-    final position = _mediaPlayer!.state.position;
-    if (position > Duration.zero) {
-      _lastPlaybackPosition = position;
-    }
-
-    setState(() {
-      _selectedQuality = stream['quality'];
-      currentUrl = stream['url'];
-      if (stream['headers'] != null) {
-        currentHeaders = Map<String, String>.from(stream['headers']);
-      }
-    });
-
-    _hasRestoredPosition = false;
-    await _mediaPlayer!.open(
-      Media(currentUrl, httpHeaders: currentHeaders),
-      play: true,
-    );
-    // Restore the selected subtitle track when quality changes
-    _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
-  }
-
-  void _changeSubtitle(SubtitleTrack track) {
-    if (_mediaPlayer == null) return;
-
-    setState(() {
-      _selectedSubtitleTrack = track;
-    });
-
-    _mediaPlayer!.setSubtitleTrack(track);
   }
 
   Future<Map<String, dynamic>?> _buildPlaybackUrl(
@@ -558,6 +319,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         season: int.tryParse(currentSeason) ?? 1,
         episodeNumber: int.tryParse(currentEpisode) ?? 1,
         isDub: _isDub,
+        tmdbId: widget.tmdbId,
       );
     }
 
@@ -615,42 +377,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _startPlayback() {
-    setState(() {
-      _isPlaying = true;
-    });
-
-    if (currentUrl.isNotEmpty) {
-      if (_currentEngine == 'webview' && webViewController != null) {
-        webViewController!.loadUrl(
-          urlRequest: URLRequest(url: WebUri(currentUrl)),
-        );
-      } else if (_currentEngine == 'native_extractor') {
-        _startHeadlessExtractor(currentUrl);
-      } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
-        _initializeNativePlayer(currentUrl, headers: currentHeaders);
-      }
+    final allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
+    if (_successfulProviders.isNotEmpty) {
+      _playFromProvider(_successfulProviders.first, allProviders);
+    } else {
+      _extractionQueue = List.generate(allProviders.length, (index) => index);
+      _processExtractionQueue(allProviders);
     }
-
-    ContinueWatchingService.saveItem(
-      tmdbId: widget.tmdbId,
-      title: widget.title,
-      posterPath: null,
-      isMovie: widget.isMovie,
-      lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
-      lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
-    );
   }
 
-  Future<void> _startHeadlessExtractor(String embedUrl) async {
-    setState(() {
-      _isExtracting = true;
-      _extractedSubtitles.clear();
-      _extractedStreamUrl = null;
-      _extractedStreamHeaders = null;
-    });
-
-    headlessWebView?.dispose();
-    headlessWebView = HeadlessInAppWebView(
+  Future<void> _startHeadlessExtractor(int index, String embedUrl, List<Map<String, dynamic>> providers) async {
+    final webview = HeadlessInAppWebView(
       initialUrlRequest: URLRequest(url: WebUri(embedUrl)),
       initialSettings: InAppWebViewSettings(
         useShouldInterceptRequest: true,
@@ -662,7 +399,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: """
-            // 1. Override fetch to sniff out .m3u8, .mp4, .vtt, .srt
             var originalFetch = window.fetch;
             window.fetch = function() {
                 var reqUrl = arguments[0];
@@ -675,66 +411,41 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 }
                 return originalFetch.apply(this, arguments);
             };
-            
-            // 2. Auto-click play buttons
             setTimeout(function() {
               var buttons = document.querySelectorAll('button, .play-button, .vjs-big-play-button, #play-btn, .plyr__control--overlaid');
               buttons.forEach(function(b) { b.click(); });
-              
               var iframes = document.querySelectorAll('iframe');
               iframes.forEach(function(f) {
                  f.contentWindow.postMessage('play', '*');
               });
-              
-              // Click the absolute center of the screen
-              var x = window.innerWidth / 2;
-              var y = window.innerHeight / 2;
-              var centerEl = document.elementFromPoint(x, y);
+              var centerEl = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
               if (centerEl) centerEl.click();
-              
               document.body.click();
             }, 1000);
-            
-            // Try clicking again after 3 seconds
-            setTimeout(function() {
-              var buttons = document.querySelectorAll('button, .play-button, .vjs-big-play-button, #play-btn, .plyr__control--overlaid');
-              buttons.forEach(function(b) { b.click(); });
-              
-              var x = window.innerWidth / 2;
-              var y = window.innerHeight / 2;
-              var centerEl = document.elementFromPoint(x, y);
-              if (centerEl) centerEl.click();
-            }, 3000);
           """,
           injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-          forMainFrameOnly: false, // Critical: Inject into all iframes!
+          forMainFrameOnly: false,
         )
       ]),
-      onWebViewCreated: (controller) {
-        print("Headless Extractor: Created for $embedUrl");
-      },
-      onLoadStart: (controller, url) {
-        print("Headless Extractor: Started loading $url");
-      },
       shouldInterceptRequest: (controller, request) async {
         final urlStr = request.url.toString();
         final referer = request.headers?['Referer']?.toString() ?? 
                         request.headers?['referer']?.toString() ?? 
                         request.headers?['Origin']?.toString() ?? 
                         Uri.parse(embedUrl).origin + '/';
-        _checkExtractedUrl(urlStr, referer);
+        _checkExtractedUrl(index, urlStr, referer, providers);
         return null;
       },
       shouldInterceptAjaxRequest: (controller, request) async {
         final urlStr = request.url.toString();
         final referer = Uri.parse(embedUrl).origin + '/';
-        _checkExtractedUrl(urlStr, referer);
+        _checkExtractedUrl(index, urlStr, referer, providers);
         return null;
       },
       shouldInterceptFetchRequest: (controller, request) async {
         final urlStr = request.url.toString();
         final referer = Uri.parse(embedUrl).origin + '/';
-        _checkExtractedUrl(urlStr, referer);
+        _checkExtractedUrl(index, urlStr, referer, providers);
         return null;
       },
       onConsoleMessage: (controller, consoleMessage) {
@@ -742,74 +453,46 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         if (msg.startsWith("STREAM_FOUND: ")) {
           final urlStr = msg.replaceFirst("STREAM_FOUND: ", "");
           final referer = Uri.parse(embedUrl).origin + '/';
-          _checkExtractedUrl(urlStr, referer);
+          _checkExtractedUrl(index, urlStr, referer, providers);
         } else if (msg.startsWith("SUBTITLE_FOUND: ")) {
           final urlStr = msg.replaceFirst("SUBTITLE_FOUND: ", "");
           final referer = Uri.parse(embedUrl).origin + '/';
-          _checkExtractedUrl(urlStr, referer);
+          _checkExtractedUrl(index, urlStr, referer, providers);
         }
-      },
-      onLoadStop: (controller, url) async {
-        print("Headless Extractor: Stopped loading $url");
       },
     );
 
+    _headlessExtractors[index] = webview;
+
     try {
-      await headlessWebView?.run();
-      // Setup a 15-second timeout to trigger failover if extraction takes too long
-      Future.delayed(const Duration(seconds: 15), () {
-        if (mounted && _isExtracting && _extractedStreamUrl == null) {
-          print("Headless Extractor: Timeout reached without finding stream, triggering failover");
-          headlessWebView?.dispose();
-          headlessWebView = null;
-          setState(() {
-            _isExtracting = false;
-          });
-          _triggerFailover();
+      await webview.run();
+      Future.delayed(const Duration(seconds: 8), () {
+        if (mounted && !_successfulProviders.contains(index) && _headlessExtractors.containsKey(index)) {
+          print("Headless Extractor: Timeout for index $index");
+          _finishExtraction(index, false, providers);
         }
       });
     } catch (e) {
       print("Headless Extractor error: $e");
-      _triggerFailover();
+      _finishExtraction(index, false, providers);
     }
   }
 
-  void _checkExtractedUrl(String urlStr, String referer) {
-    if (!_isExtracting) return;
+  void _checkExtractedUrl(int index, String urlStr, String referer, List<Map<String, dynamic>> providers) {
+    if (!mounted || _successfulProviders.contains(index)) return;
     
     if (urlStr.contains('.vtt') || urlStr.contains('.srt')) {
-      if (!_extractedSubtitles.contains(urlStr)) {
-        print("Headless Extractor: Found subtitle! $urlStr");
-        _extractedSubtitles.add(urlStr);
+      if (_extractedProviderData[index] == null) {
+        _extractedProviderData[index] = {'url': '', 'headers': null, 'subtitles': <String>[]};
       }
-    } else if ((urlStr.contains('.m3u8') || urlStr.contains('.mp4')) && _extractedStreamUrl == null) {
-      print("Headless Extractor: Found stream! $urlStr");
-      _extractedStreamUrl = urlStr;
-      _extractedStreamHeaders = {'Referer': referer};
-      
-      // Wait 2 seconds for subtitles to load before initializing player
-      _extractionTimer?.cancel();
-      _extractionTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted && _isExtracting) {
-          setState(() {
-            _isExtracting = false;
-            // Add extracted subtitles to the API subtitles list
-            for (var subUrl in _extractedSubtitles) {
-              if (!_apiSubtitles.any((s) => s['url'] == subUrl)) {
-                _apiSubtitles.add({
-                  'lang': 'Extracted ${subUrl.split('.').last.toUpperCase()}',
-                  'url': subUrl
-                });
-              }
-            }
-          });
-          
-          headlessWebView?.dispose();
-          headlessWebView = null;
-          
-          _initializeNativePlayer(_extractedStreamUrl!, headers: _extractedStreamHeaders);
-        }
-      });
+      final subs = _extractedProviderData[index]!['subtitles'] as List<String>;
+      if (!subs.contains(urlStr)) {
+        subs.add(urlStr);
+      }
+    } else if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
+      print("Headless Extractor: Found stream for index $index! $urlStr");
+      final existingSubs = _extractedProviderData[index]?['subtitles'] as List<String>? ?? [];
+      _onExtractionSuccess(index, urlStr, {'Referer': referer}, existingSubs, providers);
     }
   }
 
@@ -818,46 +501,49 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     
     if (_mediaPlayer != null) {
       final pos = _mediaPlayer!.state.position;
-      if (pos > Duration.zero) {
-        _lastPlaybackPosition = pos;
-      }
+      if (pos > Duration.zero) _lastPlaybackPosition = pos;
     }
 
-    // First, try fallback within the same aggregator if it provided multiple streams
-    if (_availableQualities.isNotEmpty) {
-      _availableQualities.removeWhere((s) => s['url'] == currentUrl);
-      if (_availableQualities.isNotEmpty) {
-        final nextStream = _availableQualities.first;
-        print("Failover: Trying next available stream from aggregator: ${nextStream['quality']}");
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Stream failed. Switching to backup stream..."),
-            backgroundColor: Colors.orangeAccent,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        _changeQuality(nextStream, isAuto: true);
-        return;
-      }
-    }
-
-    print("All aggregated streams failed. Moving to next engine/provider...");
+    final allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
     
-    // Show a popup on screen
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("All streams failed. Switching to next server..."),
-        backgroundColor: Colors.redAccent,
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    setState(() {
-      currentProviderIndex++;
-    });
-    _preparePlaybackUrl();
+    int? nextIndex;
+    for (int idx in _successfulProviders) {
+      if (idx > currentProviderIndex) {
+        nextIndex = idx;
+        break;
+      }
+    }
+    
+    if (nextIndex != null) {
+      print("Failover: Switching to Server ${nextIndex + 1}");
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Stream failed. Switching to Server ${nextIndex! + 1}..."),
+              backgroundColor: Colors.orangeAccent,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+      _playFromProvider(nextIndex, allProviders);
+    } else {
+      print("All successful streams failed.");
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("All fallback streams failed."),
+              backgroundColor: Colors.redAccent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+    }
   }
 
   Widget _buildVideoPlayerArea() {
@@ -870,7 +556,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       );
     }
 
-    if (_isMappingEpisode) {
+    if (_successfulProviders.isEmpty && !_parallelExtractionComplete) {
       return Stack(
         alignment: Alignment.center,
         children: [
@@ -1134,6 +820,200 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           },
         ),
       ],
+    );
+  }
+
+  void _processExtractionQueue(List<Map<String, dynamic>> providers) {
+    if (_extractionQueue.isEmpty) {
+      if (_activeConcurrency == 0) {
+        if (mounted) {
+          setState(() {
+            _parallelExtractionComplete = true;
+          });
+        }
+        if (_successfulProviders.isEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("All servers failed to find streams."),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          });
+        }
+      }
+      return;
+    }
+
+    while (_activeConcurrency < _maxConcurrency && _extractionQueue.isNotEmpty) {
+      final index = _extractionQueue.removeAt(0);
+      _activeConcurrency++;
+      _startSingleExtraction(index, providers[index], providers);
+    }
+  }
+
+  Future<void> _startSingleExtraction(int index, Map<String, dynamic> provider, List<Map<String, dynamic>> providers) async {
+    currentProviderIndex = index;
+    final playbackData = await _buildPlaybackUrl(provider);
+    
+    if (!mounted) return;
+
+    if (playbackData == null || playbackData['url'] == null) {
+      _finishExtraction(index, false, providers);
+      return;
+    }
+
+    final String engine = provider['engine'] ?? 'webview';
+    final String url = playbackData['url'] as String;
+
+    if (engine.startsWith('native_') && engine != 'native_extractor') {
+      _onExtractionSuccess(index, url, playbackData['headers'] != null ? Map<String, String>.from(playbackData['headers'] as Map) : null, [], providers);
+    } else if (engine == 'native_extractor') {
+      _startHeadlessExtractor(index, url, providers);
+    } else {
+      _finishExtraction(index, false, providers);
+    }
+  }
+
+  void _finishExtraction(int index, bool success, List<Map<String, dynamic>> providers) {
+    if (!mounted) return;
+    _headlessExtractors[index]?.dispose();
+    _headlessExtractors.remove(index);
+    _activeConcurrency--;
+    _processExtractionQueue(providers);
+  }
+
+  void _onExtractionSuccess(int index, String url, Map<String, String>? headers, List<String> subtitles, List<Map<String, dynamic>> providers) {
+    if (!mounted) return;
+    
+    if (!_successfulProviders.contains(index)) {
+      print("Parallel Extraction: Server ${index + 1} Succeeded!");
+      setState(() {
+        _successfulProviders.add(index);
+        _extractedProviderData[index] = {
+          'url': url,
+          'headers': headers,
+          'subtitles': subtitles,
+        };
+        _successfulProviders.sort();
+      });
+
+      if (_successfulProviders.length == 1) {
+        _playFromProvider(index, providers);
+      }
+    }
+    _finishExtraction(index, true, providers);
+  }
+
+  void _playFromProvider(int index, List<Map<String, dynamic>> providers) async {
+    final playbackData = _extractedProviderData[index];
+    if (playbackData == null) return;
+    
+    if (_mediaPlayer != null) {
+      final pos = _mediaPlayer!.state.position;
+      if (pos > Duration.zero) _lastPlaybackPosition = pos;
+      await _mediaPlayer!.stop();
+    }
+
+    setState(() {
+      currentProviderIndex = index;
+      _currentEngine = providers[index]['engine'] ?? 'webview';
+      _isPlaying = true;
+      
+      currentUrl = playbackData['url'] as String;
+      if (playbackData['headers'] != null) {
+        currentHeaders = Map<String, String>.from(
+          playbackData['headers'] as Map,
+        );
+      } else {
+        currentHeaders = null;
+      }
+
+      if (playbackData['streams'] != null) {
+        try {
+          _availableQualities = List<Map<String, dynamic>>.from(
+            playbackData['streams'],
+          );
+          if (_availableQualities.isNotEmpty) {
+            // 1. Always start playback with the top priority provider
+            String topProviderSuffix = "";
+            if (_availableQualities.first['quality'].toString().contains('(')) {
+              topProviderSuffix = "(${_availableQualities.first['quality'].toString().split('(').last.replaceAll(')', '').trim()})";
+            }
+
+            var providerStreams = _availableQualities;
+            if (topProviderSuffix.isNotEmpty) {
+              providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(topProviderSuffix)).toList();
+            }
+
+            final lowQualityStream = providerStreams.firstWhere(
+              (s) => s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
+              orElse: () => providerStreams.last,
+            );
+            _selectedQuality = lowQualityStream['quality']?.toString();
+            currentUrl = lowQualityStream['url'] ?? currentUrl;
+            if (lowQualityStream['headers'] != null) {
+              currentHeaders = Map<String, String>.from(lowQualityStream['headers']);
+            }
+            _userForcedQuality = false; // Reset on new video
+          }
+        } catch (e) {
+          print("Error parsing streams: $e");
+        }
+      } else {
+        _availableQualities = [];
+        _selectedQuality = null;
+      }
+
+      if (playbackData['subtitles'] != null) {
+        try {
+          _apiSubtitles = List<Map<String, dynamic>>.from(
+            playbackData['subtitles'],
+          );
+        } catch (e) {
+          print("Error parsing API subtitles: $e");
+        }
+      } else {
+        _apiSubtitles = [];
+      }
+      
+      // Load raw extracted subtitles from Headless
+      if (playbackData['headless_subtitles'] != null) {
+        for (var subUrl in (playbackData['headless_subtitles'] as List<String>)) {
+          if (!_apiSubtitles.any((s) => s['url'] == subUrl)) {
+            _apiSubtitles.add({
+              'lang': 'Extracted ${subUrl.split('.').last.toUpperCase()}',
+              'url': subUrl
+            });
+          }
+        }
+      }
+
+      _selectedSubtitleTrack = SubtitleTrack.no(); // Reset subtitle on new video load
+      _isFirstSubtitleLoad = true;
+      _hasDubAvailable = playbackData['hasDub'] == true;
+      _hasSubAvailable = playbackData['hasSub'] == true;
+      
+      // Auto-correct global _isDub state if the requested track doesn't exist
+      if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
+        _isDub = false;
+      } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
+        _isDub = true;
+      }
+    });
+
+    _initializeNativePlayer(currentUrl, headers: currentHeaders);
+    
+    ContinueWatchingService.saveItem(
+      tmdbId: widget.tmdbId,
+      title: widget.title,
+      posterPath: null,
+      isMovie: widget.isMovie,
+      lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
+      lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
     );
   }
 
@@ -1899,5 +1779,160 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               ),
       ),
     );
+  }
+
+
+  Future<void> _preparePlaybackUrl() async {
+    setState(() {
+      _parallelExtractionComplete = false;
+      _successfulProviders.clear();
+      _extractedProviderData.clear();
+      _activeConcurrency = 0;
+      _isPlaying = false;
+      final allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
+      _extractionQueue = List.generate(allProviders.length, (index) => index);
+      _processExtractionQueue(allProviders);
+    });
+  }
+
+  Future<void> _initializeNativePlayer(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
+    print("PlayerScreen: Initializing MediaKit player with URL: $url");
+    print("PlayerScreen: Headers: $headers");
+
+    _mediaPlayer?.dispose();
+
+    _mediaPlayer = Player(
+      configuration: const PlayerConfiguration(
+        bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
+        logLevel: MPVLogLevel.debug,
+      ),
+    );
+
+    _mediaPlayer!.stream.error.listen((error) {
+      print("MediaKit Error: $error");
+      if (mounted) {
+        // Trigger failover if we hit an error opening the stream (e.g. DNS failure)
+        _triggerFailover();
+      }
+    });
+    
+    _mediaPlayer!.stream.log.listen((event) {
+      print("MediaKit Log [${event.level}]: ${event.text}");
+    });
+
+    _mediaPlayer!.stream.buffering.listen((isBuffering) {
+      if (isBuffering) {
+        _bufferingTimer?.cancel();
+        _bufferingTimer = Timer(const Duration(seconds: 8), () {
+          if (mounted && _mediaPlayer != null && _mediaPlayer!.state.buffering) {
+            print("MediaKit Buffering Timeout! Stream might be corrupt or dead. Forcing failover...");
+            _triggerFailover();
+          }
+        });
+      } else {
+        _bufferingTimer?.cancel();
+      }
+    });
+
+    _videoController = VideoController(_mediaPlayer!);
+
+    _mediaPlayer!.stream.tracks.listen((tracks) {
+      if (mounted) {
+        setState(() {
+          // Filter out the 'no()' track if it's in the list, we add it manually
+          final subs = tracks.subtitle
+              .where((t) => t.id != 'no' && t.id != 'auto')
+              .toList();
+          _embeddedSubtitles = subs;
+
+          if (_isFirstSubtitleLoad && subs.isNotEmpty) {
+            _isFirstSubtitleLoad = false;
+            _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+          }
+        });
+      }
+    });
+
+    _mediaPlayer!.stream.position.listen((pos) {
+      if (pos > Duration.zero) {
+        _lastPlaybackPosition = pos;
+      }
+      
+      // Remember preferred working provider after 15s of playback
+      if (pos.inSeconds > 15 && _selectedQuality != null && _selectedQuality!.contains('(')) {
+        final prov = _selectedQuality!.split('(').last.replaceAll(')', '').trim();
+        if (StreamingAggregatorService.preferredProvider != prov) {
+          StreamingAggregatorService.preferredProvider = prov;
+          print("Aggregator: Saved preferred provider: $prov");
+        }
+      }
+    });
+
+    _mediaPlayer!.stream.duration.listen((duration) {
+      if (mounted && !_hasRestoredPosition && _lastPlaybackPosition > Duration.zero && duration > Duration.zero) {
+        _hasRestoredPosition = true;
+        _mediaPlayer!.seek(_lastPlaybackPosition);
+        print("Restored playback position to $_lastPlaybackPosition");
+      }
+    });
+
+    _hasRestoredPosition = false;
+    await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
+
+    // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
+    _autoQualityTimer?.cancel();
+    _autoQualityTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted && !_userForcedQuality) {
+        _applyOptimalQualityForSpeed(NetworkService().currentSpeed);
+      }
+    });
+
+    setState(() {});
+  }
+
+  void _changeQuality(
+    Map<String, dynamic> stream, {
+    bool isAuto = false,
+  }) async {
+    if (_mediaPlayer == null) return;
+
+    if (!isAuto) {
+      _userForcedQuality = true; // User manually selected, disable auto-downgrade
+      _autoQualityTimer?.cancel();
+    }
+
+    final position = _mediaPlayer!.state.position;
+    if (position > Duration.zero) {
+      _lastPlaybackPosition = position;
+    }
+
+    setState(() {
+      _selectedQuality = stream['quality'];
+      currentUrl = stream['url'];
+      if (stream['headers'] != null) {
+        currentHeaders = Map<String, String>.from(stream['headers']);
+      }
+    });
+
+    _hasRestoredPosition = false;
+    await _mediaPlayer!.open(
+      Media(currentUrl, httpHeaders: currentHeaders),
+      play: true,
+    );
+    // Restore the selected subtitle track when quality changes
+    _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
+  }
+
+  void _changeSubtitle(SubtitleTrack track) {
+    if (_mediaPlayer == null) return;
+
+    setState(() {
+      _selectedSubtitleTrack = track;
+    });
+
+    _mediaPlayer!.setSubtitleTrack(track);
   }
 }

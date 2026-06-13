@@ -1,21 +1,27 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'tmdb_service.dart';
 
 class StreamingAggregatorService {
   // Replace these with your deployed Vercel/Render URLs!
-  static String miruroApiUrl = 'https://miruro-apimsa.onrender.com';
-  static String kuudereApiUrl = 'https://kuudere-apimsa.onrender.com';
-  static String proxifyStreamsUrl = 'https://proxify-streamsmsa.onrender.com';
+  static String get miruroApiUrl => dotenv.env['MIRURO_API_URL'] ?? dotenv.env['MIRURO_API'] ?? const String.fromEnvironment('MIRURO_API_URL', defaultValue: 'https://miruro-apimsa.onrender.com');
+  static String get proxifyStreamsUrl => dotenv.env['PROXIFY_STREAMS_URL'] ?? dotenv.env['PROXIFY_STREAMS_API'] ?? const String.fromEnvironment('PROXIFY_STREAMS_URL', defaultValue: 'https://proxify-streamsmsa.onrender.com');
+  static String get sudoFlixApiUrl => dotenv.env['SUDOFLIX_API_URL'] ?? dotenv.env['SUDOFLIX_API'] ?? const String.fromEnvironment('SUDOFLIX_API_URL', defaultValue: 'https://fukatmsa-scraper-api.onrender.com');
 
   static String? preferredProvider; // Added to remember the working provider
 
   /// Fetch the native streaming URL (.m3u8) using the selected next-gen API
   static Future<Map<String, dynamic>?> getNativeStreamingUrl({
+    required String tmdbId,
     required String title,
     required String engine,
     int season = 1,
     int episodeNumber = 1,
+    int releaseYear = 2023,
     bool isDub = false,
+    bool isMovie = false,
   }) async {
     print("Aggregator: Resolving $title (S$season E$episodeNumber) via $engine");
 
@@ -23,6 +29,8 @@ class StreamingAggregatorService {
       return await _getMiruroStream(title, season, episodeNumber, isDub);
     } else if (engine == 'native_proxify') {
       return await _getProxifyStream(title, episodeNumber);
+    } else if (engine == 'native_sudoflix') {
+      return await _getSudoFlixStream(tmdbId, title, releaseYear, isMovie, season, episodeNumber);
     }
 
     return null;
@@ -36,6 +44,10 @@ class StreamingAggregatorService {
         query (\$search: String) {
           Media(search: \$search, type: ANIME, sort: SEARCH_MATCH) {
             id
+            title {
+              romaji
+              english
+            }
           }
         }
       ''';
@@ -60,6 +72,17 @@ class StreamingAggregatorService {
         
         if (media != null && media['id'] != null) {
           final anilistId = media['id'];
+          final romajiTitle = media['title']?['romaji']?.toString().toLowerCase() ?? '';
+          final englishTitle = media['title']?['english']?.toString().toLowerCase() ?? '';
+          
+          final searchTitle = title.toLowerCase();
+          
+          // Fast X matched an anime with X in the title. We need to strictly verify.
+          if (!romajiTitle.contains(searchTitle) && !englishTitle.contains(searchTitle)) {
+             print("Aggregator: Anilist title mismatch. Found '$romajiTitle' / '$englishTitle' but searched for '$searchTitle'. Skipping Miruro.");
+             return null;
+          }
+          
           print("Aggregator: Anilist ID resolved: $anilistId");
           
           // 2. Fetch episodes list from Miruro
@@ -211,6 +234,96 @@ class StreamingAggregatorService {
     } catch (e) {
       print("Proxify API Error: $e");
     }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _getSudoFlixStream(String tmdbId, String title, int releaseYear, bool isMovie, int season, int episode) async {
+    final type = isMovie ? 'movie' : 'show';
+    final encodedTitle = Uri.encodeComponent(title);
+    
+    // Fetch IMDB ID using TmdbService to ensure providers like VidSrc work
+    final imdbId = await TmdbService.getImdbId(int.parse(tmdbId), isMovie);
+
+    final providers = ['FlixHQ', 'Goku', 'SFlix', 'HiMovies'];
+
+    for (String provider in providers) {
+      try {
+        Fluttertoast.cancel();
+        Fluttertoast.showToast(
+          msg: "Trying $provider...",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+        );
+
+        String queryUrl = '$sudoFlixApiUrl/scrape?type=$type&tmdbId=$tmdbId&title=$encodedTitle&releaseYear=$releaseYear&provider=$provider';
+        if (imdbId != null) {
+            queryUrl += '&imdbId=$imdbId';
+        }
+        
+        if (!isMovie) {
+          queryUrl += '&season=$season&episode=$episode';
+        }
+
+        print("Aggregator: SudoFlix hitting -> $queryUrl");
+        final url = Uri.parse(queryUrl);
+        final response = await http.get(url).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['success'] == true && data['stream'] != null) {
+             Fluttertoast.cancel();
+             Fluttertoast.showToast(msg: "Found stream via $provider!", toastLength: Toast.LENGTH_SHORT);
+             
+             final stream = data['stream'];
+             List<Map<String, dynamic>> allStreams = [];
+             
+             // The API returns either playlist (hls) or qualities (file)
+             if (stream['type'] == 'hls' && stream['playlist'] != null) {
+                allStreams.add({
+                  'quality': 'Auto ($provider)',
+                  'url': stream['playlist'],
+                  'headers': stream['headers'] ?? {},
+                });
+             } else if (stream['type'] == 'file' && stream['qualities'] != null) {
+                final qualities = stream['qualities'] as Map<String, dynamic>;
+                qualities.forEach((key, val) {
+                   allStreams.add({
+                      'quality': '$key ($provider)',
+                      'url': val['url'],
+                      'headers': stream['headers'] ?? {},
+                   });
+                });
+             }
+             List<Map<String, dynamic>> allSubtitles = [];
+             if (stream['captions'] != null) {
+                final captions = stream['captions'] as List<dynamic>;
+                for (var cap in captions) {
+                   if (cap['url'] != null) {
+                      allSubtitles.add({
+                         'url': cap['url'].toString(),
+                         'lang': cap['language']?.toString() ?? 'Unknown',
+                      });
+                   }
+                }
+             }
+             
+             if (allStreams.isNotEmpty) {
+               return {
+                  'streams': allStreams,
+                  'url': allStreams.first['url'], // Fallback legacy
+                  'headers': allStreams.first['headers'] ?? {}, // Fallback legacy
+                  'subtitles': allSubtitles,
+               };
+             }
+          }
+        }
+      } catch (e) {
+        print("SudoFlix/Consumet loop error for $provider: $e");
+      }
+    }
+
+    Fluttertoast.cancel();
+    Fluttertoast.showToast(msg: "All providers failed. Try again later.");
     return null;
   }
 }

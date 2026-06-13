@@ -106,15 +106,6 @@ class AdBlockService {
             return false;
           }
         }, true);
-        const video = document.querySelector('video');
-        if (video) {
-          video.style.setProperty('position', 'fixed', 'important');
-          video.style.setProperty('top', '0', 'important');
-          video.style.setProperty('left', '0', 'important');
-          video.style.setProperty('width', '100vw', 'important');
-          video.style.setProperty('height', '100vh', 'important');
-          video.style.setProperty('z-index', '9999', 'important');
-        }
       })();
     """;
   }
