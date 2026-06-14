@@ -1236,12 +1236,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           ),
           const SizedBox(width: 12),
           // Sub/Dub Toggle right next to Server Selector
-          if (_currentEngine.startsWith('native_') && (_hasDubAvailable || _hasSubAvailable))
+          if (_currentEngine.startsWith('native_'))
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Sub Button
-                if (_hasSubAvailable)
+                if (true)
                   GestureDetector(
                     onTap: () {
                       if (_isDub) {
@@ -1270,7 +1270,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   ),
                 
                 // Dub Button
-                if (_hasDubAvailable)
+                if (true)
                   GestureDetector(
                     onTap: () {
                       if (!_isDub) {
