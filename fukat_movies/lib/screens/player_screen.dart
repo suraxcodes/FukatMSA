@@ -395,7 +395,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         useShouldInterceptFetchRequest: true,
         javaScriptEnabled: true,
         mediaPlaybackRequiresUserGesture: false,
+        useOnDownloadStart: true,
+        supportMultipleWindows: false,
+        javaScriptCanOpenWindowsAutomatically: false,
       ),
+      onDownloadStartRequest: (controller, downloadRequest) async {
+        print("Blocked background download request: ${downloadRequest.url}");
+      },
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: """
@@ -574,7 +580,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               CircularProgressIndicator(color: Colors.redAccent),
               SizedBox(height: 16),
               Text(
-                "Searching for anime stream...",
+                "Searching for stream...",
                 style: TextStyle(color: Colors.white),
               ),
             ],
@@ -733,8 +739,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             supportZoom: false,
             disableContextMenu: true,
             useShouldOverrideUrlLoading: true,
-            javaScriptCanOpenWindowsAutomatically: true,
-            supportMultipleWindows: true,
+            javaScriptCanOpenWindowsAutomatically: false,
+            supportMultipleWindows: false,
+            useOnDownloadStart: true,
             userAgent:
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             allowsInlineMediaPlayback: true,
@@ -766,6 +773,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               forMainFrameOnly: false,
             ),
           ]),
+          onDownloadStartRequest: (controller, downloadRequest) async {
+            print("Blocked user download request: ${downloadRequest.url}");
+          },
           onWebViewCreated: (controller) {
             webViewController = controller;
           },

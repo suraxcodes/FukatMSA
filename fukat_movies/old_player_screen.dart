@@ -461,7 +461,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               CircularProgressIndicator(color: Colors.redAccent),
               SizedBox(height: 16),
               Text(
-                "Searching for anime stream...",
+                "Searching for stream...",
                 style: TextStyle(color: Colors.white),
               ),
             ],
