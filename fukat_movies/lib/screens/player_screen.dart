@@ -498,7 +498,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     } else if (urlStr.contains('.m3u8') || urlStr.contains('.mp4')) {
       print("Headless Extractor: Found stream for index $index! $urlStr");
       final existingSubs = _extractedProviderData[index]?['subtitles'] as List<String>? ?? [];
-      _onExtractionSuccess(index, urlStr, {'Referer': referer}, existingSubs, providers);
+      _onExtractionSuccess(index, {
+        'url': urlStr,
+        'headers': {'Referer': referer},
+        'subtitles': existingSubs,
+      }, providers);
     }
   }
 
@@ -880,7 +884,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     final String url = playbackData['url'] as String;
 
     if (engine.startsWith('native_') && engine != 'native_extractor') {
-      _onExtractionSuccess(index, url, playbackData['headers'] != null ? Map<String, String>.from(playbackData['headers'] as Map) : null, [], providers);
+      _onExtractionSuccess(index, playbackData, providers);
     } else if (engine == 'native_extractor') {
       _startHeadlessExtractor(index, url, providers);
     } else {
@@ -896,18 +900,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _processExtractionQueue(providers);
   }
 
-  void _onExtractionSuccess(int index, String url, Map<String, String>? headers, List<String> subtitles, List<Map<String, dynamic>> providers) {
+  void _onExtractionSuccess(int index, Map<String, dynamic> playbackData, List<Map<String, dynamic>> providers) {
     if (!mounted) return;
     
     if (!_successfulProviders.contains(index)) {
       print("Parallel Extraction: Server ${index + 1} Succeeded!");
       setState(() {
         _successfulProviders.add(index);
-        _extractedProviderData[index] = {
-          'url': url,
-          'headers': headers,
-          'subtitles': subtitles,
-        };
+        _extractedProviderData[index] = playbackData;
         _successfulProviders.sort();
       });
 
