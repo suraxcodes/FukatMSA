@@ -1027,6 +1027,146 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     );
   }
 
+
+  Widget _buildTrackSelectors() {
+    if (_mediaPlayer == null || !_isPlaying) return SizedBox.shrink();
+
+    final audioTracks = _mediaPlayer!.state.tracks.audio;
+    final subtitleTracks = _mediaPlayer!.state.tracks.subtitle;
+    
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      color: Colors.black,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Audio Track Selector
+          if (audioTracks.length > 1)
+            ElevatedButton.icon(
+              icon: Icon(Icons.audiotrack, size: 18),
+              label: Text("Audio"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.grey[900],
+                  builder: (context) {
+                    return ListView(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text("Select Audio Track", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        ),
+                        ...audioTracks.map((track) {
+                          final isSelected = _mediaPlayer!.state.track.audio == track;
+                          return ListTile(
+                            title: Text(track.language ?? track.title ?? track.id, style: TextStyle(color: isSelected ? Colors.redAccent : Colors.white)),
+                            trailing: isSelected ? Icon(Icons.check, color: Colors.redAccent) : null,
+                            onTap: () {
+                              _mediaPlayer!.setAudioTrack(track);
+                              Navigator.pop(context);
+                              setState(() {});
+                            },
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+
+          // Subtitle Track Selector
+          if (subtitleTracks.isNotEmpty || _embeddedSubtitles.isNotEmpty)
+            ElevatedButton.icon(
+              icon: Icon(Icons.closed_caption, size: 18),
+              label: Text("CC"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.grey[900],
+                  builder: (context) {
+                    return ListView(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text("Select Subtitle", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        ),
+                        ListTile(
+                          title: Text("Off", style: TextStyle(color: _mediaPlayer!.state.track.subtitle.id == 'no' ? Colors.redAccent : Colors.white)),
+                          trailing: _mediaPlayer!.state.track.subtitle.id == 'no' ? Icon(Icons.check, color: Colors.redAccent) : null,
+                          onTap: () {
+                            _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+                            Navigator.pop(context);
+                            setState(() {});
+                          },
+                        ),
+                        ...subtitleTracks.where((t) => t.id != 'no' && t.id != 'auto').map((track) {
+                          final isSelected = _mediaPlayer!.state.track.subtitle == track;
+                          return ListTile(
+                            title: Text(track.language ?? track.title ?? track.id, style: TextStyle(color: isSelected ? Colors.redAccent : Colors.white)),
+                            trailing: isSelected ? Icon(Icons.check, color: Colors.redAccent) : null,
+                            onTap: () {
+                              _mediaPlayer!.setSubtitleTrack(track);
+                              Navigator.pop(context);
+                              setState(() {});
+                            },
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+
+          // Video Quality Selector
+          if (_availableQualities.isNotEmpty)
+            ElevatedButton.icon(
+              icon: Icon(Icons.settings, size: 18),
+              label: Text(_selectedQuality ?? "Quality"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.grey[900],
+                  builder: (context) {
+                    return ListView(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text("Select Quality", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        ),
+                        ..._availableQualities.map((q) {
+                          final qName = q['quality'] as String;
+                          final isSelected = _selectedQuality == qName;
+                          return ListTile(
+                            title: Text(qName, style: TextStyle(color: isSelected ? Colors.redAccent : Colors.white)),
+                            trailing: isSelected ? Icon(Icons.check, color: Colors.redAccent) : null,
+                            onTap: () {
+                              Navigator.pop(context);
+                              setState(() {
+                                _selectedQuality = qName;
+                                if (_mediaPlayer != null) {
+                                  _lastPlaybackPosition = _mediaPlayer!.state.position;
+                                }
+                                _initializeNativePlayer(q['url']);
+                              });
+                            },
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildServerSelector() {
     final providers = RemoteConfigService.activeProviders;
     if (providers.isEmpty) return SizedBox.shrink();
@@ -1085,16 +1225,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   }),
                   onChanged: (int? newIndex) {
                     if (newIndex != null && newIndex != currentProviderIndex) {
-                      setState(() {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          if (pos > Duration.zero) _lastPlaybackPosition = pos;
-                        }
-                        currentProviderIndex = newIndex;
-                        _isPlaying = false;
-                        webViewController = null;
-                        _preparePlaybackUrl();
-                      });
+                      if (_extractedProviderData.containsKey(newIndex)) {
+                        _playFromProvider(newIndex, List<Map<String, dynamic>>.from(providers));
+                      }
                     }
                   },
                 ),
@@ -1697,6 +1830,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             child: _buildPlayerSection(),
                           ),
                           _buildServerSelector(),
+                  _buildTrackSelectors(),
                           if (!widget.isMovie)
                             EpisodeSidePanel(
                               tmdbId: widget.tmdbId,
@@ -1752,6 +1886,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       child: _buildPlayerSection(),
                     ),
                     _buildServerSelector(),
+                  _buildTrackSelectors(),
                     if (!widget.isMovie)
                       EpisodeSidePanel(
                         tmdbId: widget.tmdbId,
@@ -1869,6 +2004,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _mediaPlayer!.stream.position.listen((pos) {
       if (pos > Duration.zero) {
         _lastPlaybackPosition = pos;
+      }
+
+      // Audio-Only Stream Detection
+      if (pos.inSeconds > 10 && _mediaPlayer!.state.width == null && _mediaPlayer!.state.playing) {
+        print("MediaKit: Stream appears to be AUDIO-ONLY (no video frames after 10s). Triggering failover.");
+        _triggerFailover();
+        return;
       }
       
       // Remember preferred working provider after 15s of playback
