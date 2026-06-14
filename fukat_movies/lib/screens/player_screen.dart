@@ -74,6 +74,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   int currentProviderIndex = 0;
   String? currentImdbId;
   bool isInitializing = true;
+  bool _hasStartedSearching = false;
   String currentUrl = "";
   String currentSeason = "1";
   String currentEpisode = "1";
@@ -303,7 +304,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       
       final providersList = RemoteConfigService.activeProviders;
       _extractionQueue = List.generate(providersList.length, (index) => index);
-      _processExtractionQueue(List<Map<String, dynamic>>.from(providersList));
+      // Wait for user to press play
     });
   }
 
@@ -557,6 +558,42 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Widget _buildVideoPlayerArea() {
+    if (!_hasStartedSearching) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          CachedNetworkImage(
+            imageUrl: _bannerUrl,
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+            color: Colors.black54,
+            colorBlendMode: BlendMode.darken,
+          ),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _hasStartedSearching = true;
+              });
+              _preparePlaybackUrl();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.redAccent,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.play_arrow,
+                size: 64,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     if (currentProviderIndex >= RemoteConfigService.activeProviders.length) {
       return Center(
         child: Text(
