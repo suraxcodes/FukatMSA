@@ -1206,7 +1206,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     13,
                     13,
                   ), // Match user's black
-                  value: currentProviderIndex < providers.length
+                  value: _successfulProviders.contains(currentProviderIndex)
                       ? currentProviderIndex
                       : null,
                   isExpanded: true,
@@ -1214,15 +1214,33 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     Icons.arrow_drop_down,
                     color: Colors.white70,
                   ),
-                  items: List.generate(providers.length, (index) {
+                  items: _successfulProviders.map((index) {
+                    final providerData = _extractedProviderData[index];
+                    String title = providers[index]['name'] as String;
+                    
+                    if (providerData != null) {
+                      bool hasSubs = providerData['hasSub'] == true || (providerData['subtitles'] != null && (providerData['subtitles'] as List).isNotEmpty);
+                      bool hasDubs = providerData['hasDub'] == true;
+                      
+                      if (hasSubs && hasDubs) {
+                        title += ' [Sub & Dub]';
+                      } else if (hasSubs) {
+                        title += ' [Sub]';
+                      } else if (hasDubs) {
+                        title += ' [Dub]';
+                      } else {
+                        title += ' [Ready]';
+                      }
+                    }
+
                     return DropdownMenuItem<int>(
                       value: index,
                       child: Text(
-                        '${providers[index]['name']}',
+                        title,
                         style: const TextStyle(color: Colors.white),
                       ),
                     );
-                  }),
+                  }).toList(),
                   onChanged: (int? newIndex) {
                     if (newIndex != null && newIndex != currentProviderIndex) {
                       if (_extractedProviderData.containsKey(newIndex)) {
