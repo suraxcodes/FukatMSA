@@ -1254,7 +1254,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           ),
           const SizedBox(width: 12),
           // Sub/Dub Toggle right next to Server Selector
-          if (_currentEngine.startsWith('native_'))
+          if (!widget.isMovie)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
