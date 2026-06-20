@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:media_kit/media_kit.dart' as mk;
+import 'package:media_kit_video/media_kit_video.dart' hide SubtitleTrack;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -14,9 +14,12 @@ import '../services/tmdb_service.dart';
 import '../services/ad_block_service.dart';
 import '../services/streaming_aggregator_service.dart';
 import '../services/network_service.dart';
+import '../player/playback_manager.dart';
 import '../widgets/episode_side_panel.dart';
+import '../models/subtitle_track.dart' as local_subtitle;
 import '../services/continue_watching_service.dart';
 import '../widgets/watchlist_icon_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Helper to set fullscreen on both desktop and mobile
 Future<void> _setFullScreen(bool enable) async {
@@ -46,8 +49,6 @@ Future<void> _setFullScreen(bool enable) async {
 //   await _setFullScreen(!isFull);
 // },
 
-
-
 class PlayerScreen extends StatefulWidget {
   final String tmdbId;
   final bool isMovie;
@@ -60,10 +61,10 @@ class PlayerScreen extends StatefulWidget {
   });
 
   @override
-  _PlayerScreenState createState() => _PlayerScreenState();
+  PlayerScreenState createState() => PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
+class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   // UI State
   bool _isDesktopFullscreen = false;
   bool _showControls = true;
@@ -71,6 +72,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   InAppWebViewController? webViewController;
   HeadlessInAppWebView? headlessWebView;
   bool _isExtracting = false;
+  // New playback manager for batch provider search and caching
+  PlaybackManager? _playbackManager;
   int currentProviderIndex = 0;
   String? currentImdbId;
   bool isInitializing = true;
@@ -78,6 +81,46 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   String currentSeason = "1";
   String currentEpisode = "1";
   bool _isPlaying = false;
+
+  // Callback invoked by PlaybackManager when stream list updates
+  void _onStreamsUpdated() {
+    setState(() {}); // Refresh UI elements that depend on available streams
+  }
+
+  // Callback invoked by PlaybackManager when the current stream changes
+  void _onCurrentStreamChanged() {
+    // Reset subtitle selection when a new stream is chosen
+    _selectedSubtitleLang = null;
+    final stream = _playbackManager?.currentStream;
+    if (stream != null) {
+      bool urlChanged = currentUrl != stream.url;
+      setState(() {
+        currentUrl = stream.url;
+        currentHeaders = stream.headers;
+        _availableQualities = stream.qualities;
+        _apiSubtitles = stream.subtitles
+            .map((s) => {'lang': s['lang'], 'url': s['url']})
+            .toList();
+        _hasDubAvailable = stream.hasDub;
+        _hasSubAvailable = stream.hasSub;
+        _currentEngine = stream.providerName;
+        _selectedSubtitleTrack = local_subtitle.SubtitleTrack.no();
+        _isFirstSubtitleLoad = true;
+        
+        if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
+          Fluttertoast.showToast(msg: "Dub is not available. Falling back to Sub.", backgroundColor: Colors.red);
+          _isDub = false;
+        } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
+          Fluttertoast.showToast(msg: "Sub is not available. Falling back to Dub.", backgroundColor: Colors.red);
+          _isDub = true;
+        }
+      });
+      if (_isPlaying && urlChanged) {
+        _initializeNativePlayer(currentUrl, headers: currentHeaders);
+      }
+    }
+  }
+
   String _bannerUrl =
       'https://via.placeholder.com/800x450'; // Placeholder, you can update with real TMDB backdrop
   // New state for dynamic season lists
@@ -86,14 +129,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   final GlobalKey _playerKey = GlobalKey();
 
   // Native Player State
-  Player? _mediaPlayer;
+  mk.Player? _mediaPlayer;
   VideoController? _videoController;
   Map<String, String>? currentHeaders;
   List<Map<String, dynamic>> _availableQualities = [];
-  List<SubtitleTrack> _embeddedSubtitles = [];
+  List<mk.SubtitleTrack> _embeddedSubtitles = [];
+  // Currently selected subtitle language (null = no subtitles)
+  String? _selectedSubtitleLang;
   List<Map<String, dynamic>> _apiSubtitles = [];
   String? _selectedQuality;
-  SubtitleTrack _selectedSubtitleTrack = SubtitleTrack.no();
+  dynamic _selectedSubtitleTrack = local_subtitle.SubtitleTrack.no();
+  
+  List<mk.AudioTrack> _embeddedAudioTracks = [];
+  mk.AudioTrack? _selectedAudioTrack;
   bool _isDub = false;
   bool _hasDubAvailable = false;
   bool _hasSubAvailable = true;
@@ -103,7 +151,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Timer? _autoQualityTimer;
   StreamSubscription<NetworkSpeed>? _networkSub;
   Map<String, dynamic>? _mediaDetails;
-  
+
   // Headless Extractor State
   List<String> _extractedSubtitles = [];
   String? _extractedStreamUrl;
@@ -116,9 +164,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    StreamingAggregatorService.preferredProvider = null; // Reset preferred provider for new anime session
+    StreamingAggregatorService.preferredProvider =
+        null; // Reset preferred provider for new anime session
     windowManager.addListener(this);
     NetworkService().initialize();
+    // Initialise PlaybackManager
+    _playbackManager = PlaybackManager(
+      context: context,
+      tmdbId: widget.tmdbId,
+      isMovie: widget.isMovie,
+      title: widget.title,
+    );
+    _playbackManager!.onStreamsUpdated = _onStreamsUpdated;
+    _playbackManager!.onCurrentStreamChanged = _onCurrentStreamChanged;
+    // Search is now deferred to _initializePlaybackData after checking if it's Anime
     _networkSub = NetworkService().onSpeedChange.listen((speed) {
       if (mounted) _handleNetworkSpeedChange(speed);
     });
@@ -187,32 +246,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _handleNetworkSpeedChange(NetworkSpeed speed) {
-    if (_mediaPlayer == null || _availableQualities.isEmpty) return;
-
-    // User explicitly chose a quality, don't override them
-    if (_userForcedQuality) return;
-
-    // If speed drops significantly AFTER the timer, we auto-downgrade.
-    if (speed == NetworkSpeed.slow) {
-      _applyOptimalQualityForSpeed(speed);
-    }
+    // Adjust quality based on network speed changes
+    if (_mediaPlayer == null) return;
+    _applyOptimalQualityForSpeed(speed);
   }
+
+  // Callbacks for PlaybackManager updates
 
   void _applyOptimalQualityForSpeed(NetworkSpeed speed) {
     if (_availableQualities.isEmpty) return;
-    
+
     // Only auto-switch within the current provider to prevent accidental failovers
     String providerSuffix = "";
     if (_selectedQuality != null && _selectedQuality!.contains('(')) {
-      providerSuffix = "(${_selectedQuality!.split('(').last.replaceAll(')', '').trim()})";
+      providerSuffix =
+          "(${_selectedQuality!.split('(').last.replaceAll(')', '').trim()})";
     }
 
     var providerStreams = _availableQualities;
     if (providerSuffix.isNotEmpty) {
-      providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(providerSuffix)).toList();
+      providerStreams = _availableQualities
+          .where((s) => s['quality'].toString().contains(providerSuffix))
+          .toList();
       if (providerStreams.isEmpty) providerStreams = _availableQualities;
     }
-    
+
     Map<String, dynamic> targetStream;
     if (speed == NetworkSpeed.fast) {
       targetStream = providerStreams.first; // Usually highest
@@ -230,9 +288,86 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     if (_selectedQuality != targetStream['quality']) {
-      Fluttertoast.showToast(msg: "Auto-adjusting video quality to ${targetStream['quality']} based on internet speed");
+      Fluttertoast.showToast(
+        msg:
+            "Auto-adjusting video quality to ${targetStream['quality']} based on internet speed",
+      );
       _changeQuality(targetStream, isAuto: true);
     }
+  }
+
+  List<Map<String, dynamic>> get _activeProviders {
+    final allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
+    if (_isAnime) {
+      return allProviders.where((p) => p['engine'] == 'native_miruro').toList();
+    } else {
+      return allProviders.where((p) => p['engine'] != 'native_miruro').toList();
+    }
+  }
+
+  bool get _isAnime {
+    if (widget.isMovie) return false;
+    final providers = RemoteConfigService.activeProviders;
+    bool hasMiruro = providers.any((p) => p['engine'] == 'native_miruro');
+    if (!hasMiruro) return false;
+    if (_mediaDetails == null) return false;
+    
+    final originCountry = _mediaDetails!['origin_country'] as List<dynamic>? ?? [];
+    if (originCountry.contains('JP')) return true;
+    
+    final genres = _mediaDetails!['genres'] as List<dynamic>? ?? [];
+    return genres.any((g) => g['name']?.toString().toLowerCase() == 'animation');
+  }
+
+  Future<void> _promptSubDubSelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey('anime_audio_pref_is_dub')) {
+      _isDub = prefs.getBool('anime_audio_pref_is_dub') ?? false;
+      _playbackManager!.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+      _preparePlaybackUrl();
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111111),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text("Select Audio", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: const Text(
+            "Do you prefer to watch with Subtitles (Original Audio) or Dubbed (English Audio)?",
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                prefs.setBool('anime_audio_pref_is_dub', false);
+                Navigator.of(context).pop();
+                setState(() { _isDub = false; });
+                _playbackManager!.initAndSearch(isAnime: true, isDub: false, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+                _preparePlaybackUrl();
+              },
+              child: const Text("SUB", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () {
+                prefs.setBool('anime_audio_pref_is_dub', true);
+                Navigator.of(context).pop();
+                setState(() { _isDub = true; });
+                _playbackManager!.initAndSearch(isAnime: true, isDub: true, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+                _preparePlaybackUrl();
+              },
+              child: const Text("DUB", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _initializePlaybackData() async {
@@ -277,7 +412,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         });
       }
     } else {
-      _mediaDetails = await TmdbService.getMovieDetails(int.parse(widget.tmdbId));
+      _mediaDetails = await TmdbService.getMovieDetails(
+        int.parse(widget.tmdbId),
+      );
       if (_mediaDetails != null && _mediaDetails!['backdrop_path'] != null) {
         _bannerUrl =
             'https://image.tmdb.org/t/p/w1280${_mediaDetails!['backdrop_path']}';
@@ -288,12 +425,52 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       currentImdbId =
           imdbId ?? widget.tmdbId; // Fallback to TMDB if IMDB not found
       isInitializing = false;
-      _preparePlaybackUrl();
     });
+
+    if (_isAnime) {
+      await _promptSubDubSelection();
+    } else {
+      _playbackManager!.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+      _preparePlaybackUrl();
+    }
   }
 
+  // _preparePlaybackUrl is now handled by PlaybackManager. This method is kept for compatibility with existing Miruro failover.
   Future<void> _preparePlaybackUrl() async {
-    final providersList = RemoteConfigService.activeProviders;
+    // If PlaybackManager already has a current stream, use it.
+    if (_playbackManager != null && _playbackManager!.currentStream != null) {
+      final stream = _playbackManager!.currentStream!;
+      setState(() {
+        currentUrl = stream.url;
+        currentHeaders = stream.headers;
+        _availableQualities = stream.qualities;
+        _apiSubtitles = stream.subtitles
+            .map((s) => {'lang': s['lang'], 'url': s['url']})
+            .toList();
+        _selectedSubtitleTrack = local_subtitle.SubtitleTrack.no();
+        _isFirstSubtitleLoad = true;
+        _hasDubAvailable = stream.hasDub;
+        _hasSubAvailable = stream.hasSub;
+        _currentEngine = stream.providerName;
+        // Preserve existing _isDub logic.
+        if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
+          _isDub = false;
+        } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
+          _isDub = true;
+        }
+        // Auto-select a default quality (lowest if auto mode).
+        if (_availableQualities.isNotEmpty) {
+          _selectedQuality = _availableQualities.first['quality']?.toString();
+        }
+      });
+      // Start playback if already playing.
+      if (_isPlaying) {
+        _initializeNativePlayer(currentUrl, headers: currentHeaders);
+      }
+      return;
+    }
+    // Fallback to original logic for legacy providers (should rarely be hit).
+    final providersList = _activeProviders;
     if (currentProviderIndex >= providersList.length) {
       setState(() {
         currentUrl = "";
@@ -301,22 +478,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       });
       return;
     }
-
     var activeProvider = providersList[currentProviderIndex];
     _currentEngine = activeProvider['engine'] ?? 'webview';
-
     setState(() {
       _isMappingEpisode = _currentEngine.startsWith('native_');
     });
-
     final playbackData = await _buildPlaybackUrl(activeProvider);
-
     if (!mounted) return;
-
     setState(() {
       _isMappingEpisode = false;
     });
-
     if (playbackData == null || playbackData['url'] == null) {
       _triggerFailover();
     } else {
@@ -329,43 +500,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         } else {
           currentHeaders = null;
         }
-
+        // Parse qualities and subtitles similarly to original.
         if (playbackData['streams'] != null) {
           try {
             _availableQualities = List<Map<String, dynamic>>.from(
               playbackData['streams'],
             );
-            if (_availableQualities.isNotEmpty) {
-              // 1. Always start playback with the top priority provider
-              String topProviderSuffix = "";
-              if (_availableQualities.first['quality'].toString().contains('(')) {
-                topProviderSuffix = "(${_availableQualities.first['quality'].toString().split('(').last.replaceAll(')', '').trim()})";
-              }
-
-              var providerStreams = _availableQualities;
-              if (topProviderSuffix.isNotEmpty) {
-                providerStreams = _availableQualities.where((s) => s['quality'].toString().contains(topProviderSuffix)).toList();
-              }
-
-              final lowQualityStream = providerStreams.firstWhere(
-                (s) => s['quality'].toString().contains('360') || s['quality'].toString().contains('480'),
-                orElse: () => providerStreams.last,
-              );
-              _selectedQuality = lowQualityStream['quality']?.toString();
-              currentUrl = lowQualityStream['url'] ?? currentUrl;
-              if (lowQualityStream['headers'] != null) {
-                currentHeaders = Map<String, String>.from(lowQualityStream['headers']);
-              }
-              _userForcedQuality = false; // Reset on new video
-            }
           } catch (e) {
             print("Error parsing streams: $e");
           }
-        } else {
-          _availableQualities = [];
-          _selectedQuality = null;
         }
-
         if (playbackData['subtitles'] != null) {
           try {
             _apiSubtitles = List<Map<String, dynamic>>.from(
@@ -374,20 +518,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           } catch (e) {
             print("Error parsing API subtitles: $e");
           }
-        } else {
-          _apiSubtitles = [];
         }
-
-        _selectedSubtitleTrack =
-            SubtitleTrack.no(); // Reset subtitle on new video load
+        _selectedSubtitleTrack = local_subtitle.SubtitleTrack.no();
         _isFirstSubtitleLoad = true;
         _hasDubAvailable = playbackData['hasDub'] == true;
         _hasSubAvailable = playbackData['hasSub'] == true;
-        
-        // Auto-correct global _isDub state if the requested track doesn't exist
         if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
+          Fluttertoast.showToast(msg: "Dub is not available. Falling back to Sub.", backgroundColor: Colors.red);
           _isDub = false;
         } else if (!_isDub && !_hasSubAvailable && _hasDubAvailable) {
+          Fluttertoast.showToast(msg: "Sub is not available. Falling back to Dub.", backgroundColor: Colors.red);
           _isDub = true;
         }
       });
@@ -398,7 +538,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           );
         } else if (_currentEngine == 'native_extractor') {
           _startHeadlessExtractor(currentUrl);
-        } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
+        } else if (_currentEngine.startsWith('native_') &&
+            _currentEngine != 'native_extractor') {
           _initializeNativePlayer(currentUrl, headers: currentHeaders);
         }
       }
@@ -414,10 +555,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     _mediaPlayer?.dispose();
 
-    _mediaPlayer = Player(
-      configuration: const PlayerConfiguration(
+    _mediaPlayer = mk.Player(
+      configuration: mk.PlayerConfiguration(
         bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
-        logLevel: MPVLogLevel.debug,
+        logLevel: mk.MPVLogLevel.debug,
       ),
     );
 
@@ -428,7 +569,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         _triggerFailover();
       }
     });
-    
+
     _mediaPlayer!.stream.log.listen((event) {
       print("MediaKit Log [${event.level}]: ${event.text}");
     });
@@ -437,8 +578,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       if (isBuffering) {
         _bufferingTimer?.cancel();
         _bufferingTimer = Timer(const Duration(seconds: 8), () {
-          if (mounted && _mediaPlayer != null && _mediaPlayer!.state.buffering) {
-            print("MediaKit Buffering Timeout! Stream might be corrupt or dead. Forcing failover...");
+          if (mounted &&
+              _mediaPlayer != null &&
+              _mediaPlayer!.state.buffering) {
+            print(
+              "MediaKit Buffering Timeout! Stream might be corrupt or dead. Forcing failover...",
+            );
             _triggerFailover();
           }
         });
@@ -448,6 +593,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     });
 
     _videoController = VideoController(_mediaPlayer!);
+    if (mounted) setState(() {});
 
     _mediaPlayer!.stream.tracks.listen((tracks) {
       if (mounted) {
@@ -458,9 +604,33 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               .toList();
           _embeddedSubtitles = subs;
 
+          final audios = tracks.audio
+              .where((t) => t.id != 'no' && t.id != 'auto')
+              .toList();
+          _embeddedAudioTracks = audios;
+
+          // Default selection if available
+          if (_selectedAudioTrack == null && tracks.audio.isNotEmpty) {
+            _selectedAudioTrack = _mediaPlayer!.state.track.audio;
+          }
+
           if (_isFirstSubtitleLoad && subs.isNotEmpty) {
             _isFirstSubtitleLoad = false;
-            _mediaPlayer!.setSubtitleTrack(SubtitleTrack.no());
+            if (!_isDub) {
+              try {
+                final engSub = subs.firstWhere(
+                  (t) => t.title?.toLowerCase().contains('eng') == true || 
+                         t.language?.toLowerCase().contains('en') == true,
+                  orElse: () => subs.first,
+                );
+                _selectedSubtitleTrack = engSub;
+                _mediaPlayer!.setSubtitleTrack(engSub);
+              } catch (_) {
+                _mediaPlayer!.setSubtitleTrack(mk.SubtitleTrack.no());
+              }
+            } else {
+              _mediaPlayer!.setSubtitleTrack(mk.SubtitleTrack.no());
+            }
           }
         });
       }
@@ -470,10 +640,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       if (pos > Duration.zero) {
         _lastPlaybackPosition = pos;
       }
-      
+
       // Remember preferred working provider after 15s of playback
-      if (pos.inSeconds > 15 && _selectedQuality != null && _selectedQuality!.contains('(')) {
-        final prov = _selectedQuality!.split('(').last.replaceAll(')', '').trim();
+      if (pos.inSeconds > 15 &&
+          _selectedQuality != null &&
+          _selectedQuality!.contains('(')) {
+        final prov = _selectedQuality!
+            .split('(')
+            .last
+            .replaceAll(')', '')
+            .trim();
         if (StreamingAggregatorService.preferredProvider != prov) {
           StreamingAggregatorService.preferredProvider = prov;
           print("Aggregator: Saved preferred provider: $prov");
@@ -482,7 +658,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     });
 
     _mediaPlayer!.stream.duration.listen((duration) {
-      if (mounted && !_hasRestoredPosition && _lastPlaybackPosition > Duration.zero && duration > Duration.zero) {
+      if (mounted &&
+          !_hasRestoredPosition &&
+          _lastPlaybackPosition > Duration.zero &&
+          duration > Duration.zero) {
         _hasRestoredPosition = true;
         _mediaPlayer!.seek(_lastPlaybackPosition);
         print("Restored playback position to $_lastPlaybackPosition");
@@ -490,7 +669,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     });
 
     _hasRestoredPosition = false;
-    await _mediaPlayer!.open(Media(url, httpHeaders: headers), play: true);
+    await _mediaPlayer!.open(mk.Media(url, httpHeaders: headers), play: true);
 
     // 2. Start 15-second timer to auto-upgrade/downgrade based on measured speed
     _autoQualityTimer?.cancel();
@@ -510,7 +689,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     if (_mediaPlayer == null) return;
 
     if (!isAuto) {
-      _userForcedQuality = true; // User manually selected, disable auto-downgrade
+      _userForcedQuality =
+          true; // User manually selected, disable auto-downgrade
       _autoQualityTimer?.cancel();
     }
 
@@ -529,21 +709,79 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     _hasRestoredPosition = false;
     await _mediaPlayer!.open(
-      Media(currentUrl, httpHeaders: currentHeaders),
+      mk.Media(currentUrl, httpHeaders: currentHeaders),
       play: true,
     );
-    // Restore the selected subtitle track when quality changes
+    // Restore subtitle after quality change
     _mediaPlayer!.setSubtitleTrack(_selectedSubtitleTrack);
   }
 
-  void _changeSubtitle(SubtitleTrack track) {
+  void _changeSubtitle(dynamic track) {
     if (_mediaPlayer == null) return;
+    if (track is mk.SubtitleTrack) {
+      setState(() {
+        _selectedSubtitleTrack = track;
+        _selectedSubtitleLang = null;
+      });
+      _mediaPlayer!.setSubtitleTrack(track);
+    } else {
+      // Local subtitle handling (no direct player support)
+      setState(() {
+        _selectedSubtitleTrack = track;
+        _selectedSubtitleLang = track != local_subtitle.SubtitleTrack.no()
+            ? track.url
+            : null;
+      });
+    }
+  }
 
+  // Helper to select subtitle by language identifier
+  void _selectSubtitleByLang(String lang) {
+    final sub = _apiSubtitles.firstWhere(
+      (s) => s['lang'] == lang,
+      orElse: () => {},
+    );
+    if (sub.isNotEmpty) {
+      final track = local_subtitle.SubtitleTrack.uri(sub['url'] as String);
+      _changeSubtitle(track);
+    }
+  }
+
+  // Handle episode selection from EpisodeSidePanel (desktop layout)
+  void _onEpisodeSelected(String season, String episode) {
     setState(() {
-      _selectedSubtitleTrack = track;
+      currentSeason = season;
+      currentEpisode = episode;
+      currentProviderIndex = 0;
+      _isPlaying = false;
+      webViewController = null;
+      _lastPlaybackPosition = Duration.zero;
     });
+    _playbackManager?.clearCache();
+    if (_isAnime) {
+      _playbackManager?.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+    } else {
+      _playbackManager?.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+    }
+    _preparePlaybackUrl().then((_) {
+      _startPlayback();
+    });
+  }
 
-    _mediaPlayer!.setSubtitleTrack(track);
+  // Handle audio (dub) toggle from EpisodeSidePanel (desktop layout)
+  void _onAudioChanged(bool isDub) {
+    if (_isDub != isDub) {
+      setState(() {
+        _isDub = isDub;
+      });
+      _playbackManager?.clearCache();
+      if (_isAnime) {
+        _playbackManager?.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+      } else {
+        _playbackManager?.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+      }
+      _preparePlaybackUrl();
+    }
   }
 
   Future<Map<String, dynamic>?> _buildPlaybackUrl(
@@ -626,7 +864,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         );
       } else if (_currentEngine == 'native_extractor') {
         _startHeadlessExtractor(currentUrl);
-      } else if (_currentEngine.startsWith('native_') && _currentEngine != 'native_extractor') {
+      } else if (_currentEngine.startsWith('native_') &&
+          _currentEngine != 'native_extractor') {
         _initializeNativePlayer(currentUrl, headers: currentHeaders);
       }
     }
@@ -708,7 +947,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           """,
           injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
           forMainFrameOnly: false, // Critical: Inject into all iframes!
-        )
+        ),
       ]),
       onWebViewCreated: (controller) {
         print("Headless Extractor: Created for $embedUrl");
@@ -718,10 +957,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       },
       shouldInterceptRequest: (controller, request) async {
         final urlStr = request.url.toString();
-        final referer = request.headers?['Referer']?.toString() ?? 
-                        request.headers?['referer']?.toString() ?? 
-                        request.headers?['Origin']?.toString() ?? 
-                        Uri.parse(embedUrl).origin + '/';
+        final referer =
+            request.headers?['Referer']?.toString() ??
+            request.headers?['referer']?.toString() ??
+            request.headers?['Origin']?.toString() ??
+            Uri.parse(embedUrl).origin + '/';
         _checkExtractedUrl(urlStr, referer);
         return null;
       },
@@ -759,7 +999,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       // Setup a 15-second timeout to trigger failover if extraction takes too long
       Future.delayed(const Duration(seconds: 15), () {
         if (mounted && _isExtracting && _extractedStreamUrl == null) {
-          print("Headless Extractor: Timeout reached without finding stream, triggering failover");
+          print(
+            "Headless Extractor: Timeout reached without finding stream, triggering failover",
+          );
           headlessWebView?.dispose();
           headlessWebView = null;
           setState(() {
@@ -776,17 +1018,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   void _checkExtractedUrl(String urlStr, String referer) {
     if (!_isExtracting) return;
-    
+
     if (urlStr.contains('.vtt') || urlStr.contains('.srt')) {
       if (!_extractedSubtitles.contains(urlStr)) {
         print("Headless Extractor: Found subtitle! $urlStr");
         _extractedSubtitles.add(urlStr);
       }
-    } else if ((urlStr.contains('.m3u8') || urlStr.contains('.mp4')) && _extractedStreamUrl == null) {
+    } else if ((urlStr.contains('.m3u8') || urlStr.contains('.mp4')) &&
+        _extractedStreamUrl == null) {
       print("Headless Extractor: Found stream! $urlStr");
       _extractedStreamUrl = urlStr;
       _extractedStreamHeaders = {'Referer': referer};
-      
+
       // Wait 2 seconds for subtitles to load before initializing player
       _extractionTimer?.cancel();
       _extractionTimer = Timer(const Duration(seconds: 2), () {
@@ -798,16 +1041,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               if (!_apiSubtitles.any((s) => s['url'] == subUrl)) {
                 _apiSubtitles.add({
                   'lang': 'Extracted ${subUrl.split('.').last.toUpperCase()}',
-                  'url': subUrl
+                  'url': subUrl,
                 });
               }
             }
           });
-          
+
           headlessWebView?.dispose();
           headlessWebView = null;
-          
-          _initializeNativePlayer(_extractedStreamUrl!, headers: _extractedStreamHeaders);
+
+          _initializeNativePlayer(
+            _extractedStreamUrl!,
+            headers: _extractedStreamHeaders,
+          );
         }
       });
     }
@@ -815,7 +1061,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   void _triggerFailover() {
     print("Provider/Stream failed, triggering failover...");
-    
+
     if (_mediaPlayer != null) {
       final pos = _mediaPlayer!.state.position;
       if (pos > Duration.zero) {
@@ -828,7 +1074,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       _availableQualities.removeWhere((s) => s['url'] == currentUrl);
       if (_availableQualities.isNotEmpty) {
         final nextStream = _availableQualities.first;
-        print("Failover: Trying next available stream from aggregator: ${nextStream['quality']}");
+        print(
+          "Failover: Trying next available stream from aggregator: ${nextStream['quality']}",
+        );
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -843,7 +1091,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     print("All aggregated streams failed. Moving to next engine/provider...");
-    
+
     // Show a popup on screen
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -960,13 +1208,59 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       );
     }
 
-    if (_currentEngine.startsWith('native_') || _currentEngine == 'native_extractor') {
+    if (_currentEngine.startsWith('native_') ||
+        _currentEngine == 'native_extractor') {
       if (_videoController != null) {
         return Stack(
           children: [
             Container(
               color: Colors.black,
-              child: MaterialVideoControlsTheme(
+              child: MaterialDesktopVideoControlsTheme(
+                normal: MaterialDesktopVideoControlsThemeData(
+                  bottomButtonBar: [
+                    const MaterialDesktopSkipPreviousButton(),
+                    const MaterialDesktopPlayOrPauseButton(),
+                    const MaterialDesktopSkipNextButton(),
+                    const MaterialDesktopVolumeButton(),
+                    const MaterialDesktopPositionIndicator(),
+                    const Spacer(),
+                    _buildSettingsMenu(),
+                    IconButton(
+                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                      onPressed: () async {
+                        await _setFullScreen(!_isDesktopFullscreen);
+                        if (mounted) {
+                          setState(() {
+                            _isDesktopFullscreen = !_isDesktopFullscreen;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                fullscreen: MaterialDesktopVideoControlsThemeData(
+                  bottomButtonBar: [
+                    const MaterialDesktopSkipPreviousButton(),
+                    const MaterialDesktopPlayOrPauseButton(),
+                    const MaterialDesktopSkipNextButton(),
+                    const MaterialDesktopVolumeButton(),
+                    const MaterialDesktopPositionIndicator(),
+                    const Spacer(),
+                    _buildSettingsMenu(),
+                    IconButton(
+                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                      onPressed: () async {
+                        await _setFullScreen(!_isDesktopFullscreen);
+                        if (mounted) {
+                          setState(() {
+                            _isDesktopFullscreen = !_isDesktopFullscreen;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                child: MaterialVideoControlsTheme(
                 normal: MaterialVideoControlsThemeData(
                   bottomButtonBar: [
                     IconButton(
@@ -990,7 +1284,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     ),
                     MaterialPositionIndicator(),
                     const Spacer(),
-                    MaterialFullscreenButton(),
+                    _buildSettingsMenu(),
+                    IconButton(
+                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                      onPressed: () async {
+                        await _setFullScreen(!_isDesktopFullscreen);
+                        if (mounted) {
+                          setState(() {
+                            _isDesktopFullscreen = !_isDesktopFullscreen;
+                          });
+                        }
+                      },
+                    ),
                   ],
                 ),
                 fullscreen: MaterialVideoControlsThemeData(
@@ -1016,12 +1321,24 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     ),
                     MaterialPositionIndicator(),
                     const Spacer(),
-                    MaterialFullscreenButton(),
+                    IconButton(
+                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                      onPressed: () async {
+                        await _setFullScreen(!_isDesktopFullscreen);
+                        if (mounted) {
+                          setState(() {
+                            _isDesktopFullscreen = !_isDesktopFullscreen;
+                          });
+                        }
+                      },
+                    ),
                   ],
                 ),
                 child: Video(
+                  key: ValueKey(_videoController.hashCode),
                   controller: _videoController!,
                   controls: MaterialVideoControls,
+                ),
                 ),
               ),
             ),
@@ -1138,12 +1455,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Widget _buildServerSelector() {
-    final providers = RemoteConfigService.activeProviders;
+    final providers = _activeProviders;
     if (providers.isEmpty) return SizedBox.shrink();
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      color: Colors.black, // Main row background matches app background
+      color: Colors.black,
       child: Row(
         children: [
           Icon(Icons.dns, color: Colors.white70, size: 20),
@@ -1160,37 +1477,38 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: const Color.fromARGB(
-                  255,
-                  14,
-                  13,
-                  13,
-                ), // Match user's black
+                color: const Color.fromARGB(255, 14, 13, 13),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
-                  dropdownColor: const Color.fromARGB(
-                    255,
-                    14,
-                    13,
-                    13,
-                  ), // Match user's black
-                  value: currentProviderIndex < providers.length
-                      ? currentProviderIndex
-                      : null,
+                  dropdownColor: const Color.fromARGB(255, 14, 13, 13),
+                  value: currentProviderIndex < providers.length ? currentProviderIndex : null,
                   isExpanded: true,
-                  icon: const Icon(
-                    Icons.arrow_drop_down,
-                    color: Colors.white70,
-                  ),
+                  icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
                   items: List.generate(providers.length, (index) {
+                    final provider = providers[index];
+                    String displayName = provider['name'];
+                    
+                    if (_playbackManager != null) {
+                      // Attempt to find metadata if it's already fetched
+                      try {
+                        final streamInfo = _playbackManager!.availableStreams.firstWhere((s) => s.providerName == provider['engine']);
+                        if (streamInfo.hasSub && streamInfo.hasDub) {
+                          displayName += " (Sub + Dub)";
+                        } else if (streamInfo.hasDub) {
+                          displayName += " (Dub)";
+                        } else if (streamInfo.hasSub) {
+                          displayName += " (Sub)";
+                        }
+                      } catch (_) {
+                        // Not fetched yet
+                      }
+                    }
+
                     return DropdownMenuItem<int>(
                       value: index,
-                      child: Text(
-                        '${providers[index]['name']}',
-                        style: const TextStyle(color: Colors.white),
-                      ),
+                      child: Text(displayName, style: const TextStyle(color: Colors.white)),
                     );
                   }),
                   onChanged: (int? newIndex) {
@@ -1212,49 +1530,48 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             ),
           ),
           const SizedBox(width: 12),
-          // Sub/Dub Toggle right next to Server Selector
-          if (_currentEngine.startsWith('native_') && (_hasDubAvailable || _hasSubAvailable))
+          // Sub/Dub toggle only for native engines
+          if (_currentEngine.startsWith('native_') || 
+              (currentProviderIndex < providers.length && 
+               providers[currentProviderIndex]['engine']?.toString().startsWith('native_') == true))
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Sub Button
-                if (_hasSubAvailable)
-                  GestureDetector(
-                    onTap: () {
-                      if (_isDub) {
-                        setState(() => _isDub = false);
-                        _preparePlaybackUrl();
-                      }
-                    },
+                GestureDetector(
+                  onTap: _hasSubAvailable
+                      ? () {
+                          if (_isDub) {
+                            setState(() => _isDub = false);
+                            _preparePlaybackUrl();
+                          }
+                        }
+                      : null,
+                  child: Opacity(
+                    opacity: _hasSubAvailable ? 1.0 : 0.5,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: !_isDub ? Colors.redAccent : const Color(0xFF222222),
-                        borderRadius: (_hasSubAvailable && _hasDubAvailable)
-                            ? const BorderRadius.horizontal(left: Radius.circular(8))
-                            : BorderRadius.circular(8),
+                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
                         border: Border.all(color: !_isDub ? Colors.redAccent : Colors.white24),
                       ),
-                      child: Text(
-                        'SUB',
-                        style: TextStyle(
-                          color: !_isDub ? Colors.white : Colors.white70,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
+                      child: Text('SUB', style: TextStyle(color: !_isDub ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ),
-                
+                ),
                 // Dub Button
-                if (_hasDubAvailable)
-                  GestureDetector(
-                    onTap: () {
-                      if (!_isDub) {
-                        setState(() => _isDub = true);
-                        _preparePlaybackUrl();
-                      }
-                    },
+                GestureDetector(
+                  onTap: _hasDubAvailable
+                      ? () {
+                          if (!_isDub) {
+                            setState(() => _isDub = true);
+                            _preparePlaybackUrl();
+                          }
+                        }
+                      : null,
+                  child: Opacity(
+                    opacity: _hasDubAvailable ? 1.0 : 0.5,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
@@ -1264,19 +1581,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             : BorderRadius.circular(8),
                         border: Border.all(color: _isDub ? Colors.redAccent : Colors.white24),
                       ),
-                      child: Text(
-                        'DUB',
-                        style: TextStyle(
-                          color: _isDub ? Colors.white : Colors.white70,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
+                      child: Text('DUB', style: TextStyle(color: _isDub ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ),
+                ),
               ],
             ),
           const SizedBox(width: 8),
+          _buildSettingsMenu(),
           IconButton(
             icon: const Icon(Icons.fullscreen, color: Colors.white70),
             tooltip: 'Toggle Fullscreen',
@@ -1284,17 +1596,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               FocusManager.instance.primaryFocus?.unfocus();
               bool isFull = await windowManager.isFullScreen();
               await windowManager.setFullScreen(!isFull);
-              if (mounted) {
-                setState(() {
-                  _isDesktopFullscreen = !isFull;
-                });
-              }
+              if (mounted) setState(() => _isDesktopFullscreen = !isFull);
             },
           ),
         ],
       ),
     );
   }
+
 
   Widget _buildPlayerSection() {
     return Container(key: _playerKey, child: _buildVideoPlayerArea());
@@ -1366,15 +1675,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     final overview = _mediaDetails?['overview'] ?? 'No overview available.';
     final genresList = _mediaDetails?['genres'] as List<dynamic>?;
     final genres = genresList?.map((g) => g['name']).join(', ') ?? 'Unknown';
-    
-    final countriesList = _mediaDetails?['production_countries'] as List<dynamic>?;
-    final country = (countriesList != null && countriesList.isNotEmpty) ? countriesList[0]['name'] : 'Unknown';
-    
+
+    final countriesList =
+        _mediaDetails?['production_countries'] as List<dynamic>?;
+    final country = (countriesList != null && countriesList.isNotEmpty)
+        ? countriesList[0]['name']
+        : 'Unknown';
+
     final vote = _mediaDetails?['vote_average'];
     final rating = vote != null ? vote.toStringAsFixed(1) : 'N/A';
-    
-    final dateStr = widget.isMovie ? (_mediaDetails?['release_date']) : (_mediaDetails?['first_air_date']);
-    final year = (dateStr != null && dateStr.toString().length >= 4) ? dateStr.toString().substring(0, 4) : 'N/A';
+
+    final dateStr = widget.isMovie
+        ? (_mediaDetails?['release_date'])
+        : (_mediaDetails?['first_air_date']);
+    final year = (dateStr != null && dateStr.toString().length >= 4)
+        ? dateStr.toString().substring(0, 4)
+        : 'N/A';
 
     final breadcrumbLabel = widget.isMovie ? 'Movie' : 'TV';
 
@@ -1393,19 +1709,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               ),
             ),
           const SizedBox(height: 16),
-          
+
           // Breadcrumbs
           Row(
             children: [
               const Icon(Icons.home, color: Colors.white54, size: 16),
               const SizedBox(width: 8),
-              Text('Home / $breadcrumbLabel / ${widget.title}', 
-                style: const TextStyle(color: Colors.white54, fontSize: 12)
+              Text(
+                'Home / $breadcrumbLabel / ${widget.title}',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // Info Card
           Container(
             padding: const EdgeInsets.all(20),
@@ -1413,60 +1730,114 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               color: const Color(0xFF1E1E24), // Darker card background
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4))
-              ]
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.isMovie ? widget.title : '${widget.title} - Season $currentSeason',
-                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                  widget.isMovie
+                      ? widget.title
+                      : '${widget.title} - Season $currentSeason',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Badges Row
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(4)),
-                      child: Text('IMDb $rating', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.amber,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'IMDb $rating',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.white54), borderRadius: BorderRadius.circular(4)),
-                      child: const Text('1080P', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white54),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '1080P',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
                     ),
                     const SizedBox(width: 8),
-                    Text(year, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text(
+                      year,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Synopsis
                 Text(
                   overview,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Country & Genres
                 RichText(
                   text: TextSpan(
                     style: const TextStyle(fontSize: 12, height: 1.6),
                     children: [
-                      const TextSpan(text: 'Country: ', style: TextStyle(color: Colors.white54)),
-                      TextSpan(text: '$country\n', style: const TextStyle(color: Colors.white)),
-                      const TextSpan(text: 'Genres: ', style: TextStyle(color: Colors.white54)),
-                      TextSpan(text: genres, style: const TextStyle(color: Colors.white)),
+                      const TextSpan(
+                        text: 'Country: ',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                      TextSpan(
+                        text: '$country\n',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      const TextSpan(
+                        text: 'Genres: ',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                      TextSpan(
+                        text: genres,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
@@ -1563,171 +1934,112 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Widget _buildSettingsMenu() {
-    return PopupMenuButton<dynamic>(
+    return IconButton(
       icon: const Icon(Icons.settings, color: Colors.white),
-      color: Colors.grey[900],
-      onSelected: (value) {
-        if (value == 'sub') {
-          if (_isDub) {
-            setState(() {
-              _isDub = false;
-            });
-            _preparePlaybackUrl();
-          }
-        } else if (value == 'dub') {
-          if (!_isDub) {
-            setState(() {
-              _isDub = true;
-            });
-            _preparePlaybackUrl();
-          }
-        } else if (value is Map<String, dynamic>) {
-          _changeQuality(value);
-        } else if (value is SubtitleTrack) {
-          _changeSubtitle(value);
-        } else if (value is String && value.startsWith('api_sub_')) {
-          final url = value.replaceFirst('api_sub_', '');
-          _changeSubtitle(SubtitleTrack.uri(url));
-        }
-      },
-      itemBuilder: (context) {
-        List<PopupMenuEntry<dynamic>> items = [];
-        
-        if (_hasDubAvailable) {
-          items.addAll([
-            const PopupMenuItem<dynamic>(
-              enabled: false,
-              child: Text(
-                'Audio Track',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            PopupMenuItem<dynamic>(
-              value: 'sub',
-              child: Text(
-                'Subbed (Original)',
-                style: TextStyle(
-                  color: !_isDub ? Colors.redAccent : Colors.white,
-                  fontWeight: !_isDub ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-            PopupMenuItem<dynamic>(
-              value: 'dub',
-              child: Text(
-                'Dubbed (English)',
-                style: TextStyle(
-                  color: _isDub ? Colors.redAccent : Colors.white,
-                  fontWeight: _isDub ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-            const PopupMenuDivider(),
-          ]);
-        }
-
-        if (_availableQualities.isNotEmpty) {
-          items.add(
-            const PopupMenuItem<dynamic>(
-              enabled: false,
-              child: Text(
-                'Quality',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          );
-          items.addAll(
-            _availableQualities.map((stream) {
-              return PopupMenuItem<dynamic>(
-                value: stream,
-                child: Text(
-                  stream['quality'] ?? 'Auto',
-                  style: TextStyle(
-                    color: _selectedQuality == stream['quality']
-                        ? Colors.redAccent
-                        : Colors.white,
-                    fontWeight: _selectedQuality == stream['quality']
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                ),
-              );
-            }),
-          );
-
-          items.add(const PopupMenuDivider());
-        }
-
-        items.add(
-          const PopupMenuItem<dynamic>(
-            enabled: false,
-            child: Text(
-              'Subtitles (CC)',
-              style: TextStyle(
-                color: Colors.grey,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+      onPressed: () {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.grey[900],
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
-        );
-
-        items.add(
-            PopupMenuItem<dynamic>(
-              value: SubtitleTrack.no(),
-              child: Text(
-                'Off',
-                style: TextStyle(
-                  color: _selectedSubtitleTrack.id == 'no'
-                      ? Colors.redAccent
-                      : Colors.white,
-                  fontWeight: _selectedSubtitleTrack.id == 'no'
-                      ? FontWeight.bold
-                      : FontWeight.normal,
+          builder: (context) {
+            return SafeArea(
+              child: Container(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_hasDubAvailable) ...[
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('Audio Type', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        ),
+                        ListTile(
+                          title: Text('Subbed (Original)', style: TextStyle(color: !_isDub ? Colors.redAccent : Colors.white)),
+                          onTap: () {
+                            if (_isDub) {
+                              setState(() { _isDub = false; });
+                              _preparePlaybackUrl();
+                            }
+                            Navigator.pop(context);
+                          },
+                        ),
+                        ListTile(
+                          title: Text('Dubbed (English)', style: TextStyle(color: _isDub ? Colors.redAccent : Colors.white)),
+                          onTap: () {
+                            if (!_isDub) {
+                              setState(() { _isDub = true; });
+                              _preparePlaybackUrl();
+                            }
+                            Navigator.pop(context);
+                          },
+                        ),
+                        const Divider(color: Colors.white24),
+                      ],
+                      if (_availableQualities.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('Quality', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        ),
+                        ..._availableQualities.map((stream) => ListTile(
+                          title: Text(stream['quality'] ?? 'Auto', style: TextStyle(color: _selectedQuality == stream['quality'] ? Colors.redAccent : Colors.white)),
+                          onTap: () {
+                            _changeQuality(stream);
+                            Navigator.pop(context);
+                          },
+                        )),
+                        const Divider(color: Colors.white24),
+                      ],
+                      if (_embeddedAudioTracks.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('Audio Track', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        ),
+                        ..._embeddedAudioTracks.map((audio) => ListTile(
+                          title: Text(audio.language ?? audio.title ?? audio.id, style: TextStyle(color: _selectedAudioTrack?.id == audio.id ? Colors.redAccent : Colors.white)),
+                          onTap: () {
+                            setState(() { _selectedAudioTrack = audio; });
+                            _mediaPlayer!.setAudioTrack(audio);
+                            Navigator.pop(context);
+                          },
+                        )),
+                        const Divider(color: Colors.white24),
+                      ],
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text('Subtitles (CC)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                      ),
+                      ListTile(
+                        title: Text('Off', style: TextStyle(color: _selectedSubtitleTrack.id == 'no' ? Colors.redAccent : Colors.white)),
+                        onTap: () {
+                          _changeSubtitle(local_subtitle.SubtitleTrack.no());
+                          Navigator.pop(context);
+                        },
+                      ),
+                      ..._apiSubtitles.map((sub) => ListTile(
+                        title: Text(sub['lang'] ?? 'Unknown', style: TextStyle(color: Colors.white)),
+                        onTap: () {
+                          _changeSubtitle(local_subtitle.SubtitleTrack.uri(sub['url']));
+                          Navigator.pop(context);
+                        },
+                      )),
+                      ..._embeddedSubtitles.map((sub) => ListTile(
+                        title: Text((sub as mk.SubtitleTrack).language ?? sub.title ?? sub.id, style: TextStyle(color: _selectedSubtitleTrack.id == sub.id ? Colors.redAccent : Colors.white)),
+                        onTap: () {
+                          // _changeSubtitle(sub);
+                          Navigator.pop(context);
+                        },
+                      )),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-
-          items.addAll(
-            _apiSubtitles.map((sub) {
-              return PopupMenuItem<dynamic>(
-                value: 'api_sub_${sub['url']}',
-                child: Text(
-                  sub['lang'] ?? 'Unknown',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              );
-            }),
-          );
-
-          items.addAll(
-            _embeddedSubtitles.map((sub) {
-              return PopupMenuItem<dynamic>(
-                value: sub,
-                child: Text(
-                  sub.language ?? sub.title ?? sub.id,
-                  style: TextStyle(
-                    color: _selectedSubtitleTrack.id == sub.id
-                        ? Colors.redAccent
-                        : Colors.white,
-                    fontWeight: _selectedSubtitleTrack.id == sub.id
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                ),
-              );
-            }),
-          );
-        return items;
+            );
+          },
+        );
       },
     );
   }
@@ -1745,18 +2057,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     final bool isWide = screenWidth > 800; // Enable desktop split layout
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414), // Dark background matching design
-      appBar: _isDesktopFullscreen ? null : AppBar(
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-        ),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (_availableQualities.isNotEmpty) _buildSettingsMenu(),
-        ],
-      ),
+      backgroundColor: const Color(
+        0xFF141414,
+      ), // Dark background matching design
+      appBar: _isDesktopFullscreen
+          ? null
+          : AppBar(
+              title: Text(
+                widget.title,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              backgroundColor: Colors.black,
+              iconTheme: const IconThemeData(color: Colors.white),
+              actions: [
+                _buildSettingsMenu(),
+              ],
+            ),
       body: SafeArea(
         child: _isDesktopFullscreen
             ? Stack(
@@ -1764,9 +2080,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   Positioned.fill(
                     child: Container(
                       color: Colors.black,
-                      child: Center(
-                        child: _buildPlayerSection(),
-                      ),
+                      child: Center(child: _buildPlayerSection()),
                     ),
                   ),
                   Positioned(
@@ -1778,7 +2092,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
-                        icon: const Icon(Icons.fullscreen_exit, color: Colors.white, size: 28),
+                        icon: const Icon(
+                          Icons.fullscreen_exit,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                         onPressed: () async {
                           await windowManager.setFullScreen(false);
                           if (mounted) {
@@ -1793,7 +2111,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 ],
               )
             : isWide
-                ? Row(
+            ? Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
@@ -1813,29 +2131,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               currentSeason: currentSeason,
                               currentEpisode: currentEpisode,
                               seasons: _seasons,
-                              onEpisodeSelected: (season, episode) {
-                                setState(() {
-                                  currentSeason = season;
-                                  currentEpisode = episode;
-                                  currentProviderIndex = 0;
-                                  _isPlaying = false;
-                                  webViewController = null;
-                                  _lastPlaybackPosition = Duration.zero;
-                                });
-                                _preparePlaybackUrl().then((_) {
-                                  _startPlayback();
-                                });
-                              },
+                              onEpisodeSelected: _onEpisodeSelected,
                               isDub: _isDub,
                               hasDub: _hasDubAvailable,
-                              onAudioChanged: (isDub) {
-                                if (_isDub != isDub) {
-                                  setState(() {
-                                    _isDub = isDub;
-                                  });
-                                  _preparePlaybackUrl();
-                                }
-                              },
+                              onAudioChanged: _onAudioChanged,
                             ),
                           _buildMoreLikeThis(),
                         ],
@@ -1877,6 +2176,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             webViewController = null;
                             _lastPlaybackPosition = Duration.zero;
                           });
+                          _playbackManager?.clearCache();
+                          if (_isAnime) {
+                             _playbackManager?.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+                          } else {
+                             _playbackManager?.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
+                          }
                           _preparePlaybackUrl().then((_) {
                             _startPlayback();
                           });
