@@ -604,8 +604,8 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     _videoController = VideoController(
       _mediaPlayer!,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: true,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: !Platform.isWindows,
       ),
     );
     if (mounted) setState(() {});

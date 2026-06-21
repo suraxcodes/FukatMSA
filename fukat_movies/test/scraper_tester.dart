@@ -19,20 +19,22 @@ void main() async {
 
   // 1. TEST SELF-HOSTED SCRAPER APIS
   print("=== PART 1: SELF-HOSTED NATIVE SCRAPERS ===");
-  // Note: Replace these with your deployed Vercel/Render/Railway URLs!
-  await testNativeScraper(
-    scraperName: "CinePro Core",
-    apiUrl: "https://your-cinepro-deployment.vercel.app/api/stream?id=$testTmdbId",
-  );
-  
+  // Testing TMDB-Embed-API (Port 8787)
   await testNativeScraper(
     scraperName: "TMDB Embed API",
-    apiUrl: "https://your-tmdb-embed-deployment.onrender.com/movie/$testTmdbId",
+    apiUrl: "http://localhost:8787/api/streams/movie/$testTmdbId",
   );
 
+  // Testing CinePro Core (Port 3000)
+  await testNativeScraper(
+    scraperName: "CinePro Core",
+    apiUrl: "http://localhost:3000/api/movie/$testTmdbId", 
+  );
+
+  // Testing VidSrc Playwright Scraper (Port 4000)
   await testNativeScraper(
     scraperName: "VidSrc Playwright Scraper",
-    apiUrl: "https://your-playwright-deployment.up.railway.app/vidsrc/$testTmdbId",
+    apiUrl: "http://localhost:4000/vidsrc/$testTmdbId",
   );
 
   print("\n=== PART 2: GLOBAL IFRAME & EMBED PROVIDER MATRIX ===");
