@@ -9,6 +9,9 @@ class StreamingAggregatorService {
   static String get miruroApiUrl => dotenv.env['MIRURO_API_URL'] ?? dotenv.env['MIRURO_API'] ?? const String.fromEnvironment('MIRURO_API_URL', defaultValue: 'https://miruro-apimsa.onrender.com');
   static String get proxifyStreamsUrl => dotenv.env['PROXIFY_STREAMS_URL'] ?? dotenv.env['PROXIFY_STREAMS_API'] ?? const String.fromEnvironment('PROXIFY_STREAMS_URL', defaultValue: 'https://proxify-streamsmsa.onrender.com');
   static String get sudoFlixApiUrl => dotenv.env['SUDOFLIX_API_URL'] ?? dotenv.env['SUDOFLIX_API'] ?? const String.fromEnvironment('SUDOFLIX_API_URL', defaultValue: 'https://fukatmsa-scraper-api.onrender.com');
+  
+  static String tmdbEmbedApiUrl = 'https://tmdb-embed-api-fukatmusic-1.onrender.com'; // TMDB API
+  static String animeEmbedApiUrl = 'https://anime-api-aceq.onrender.com'; // Anime API
 
   static String? preferredProvider; // Added to remember the working provider
 
