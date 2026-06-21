@@ -7,6 +7,7 @@ import '../services/tmdb_service.dart';
 /// Model representing a successful stream from a provider.
 class StreamInfo {
   final String providerName;
+  final String engine;
   final String url;
   final Map<String, String>? headers;
   final List<Map<String, dynamic>> qualities; // each: {quality, url, headers}
@@ -16,6 +17,7 @@ class StreamInfo {
 
   StreamInfo({
     required this.providerName,
+    required this.engine,
     required this.url,
     this.headers,
     required this.qualities,
@@ -69,13 +71,36 @@ class PlaybackManager {
       _allProviders = _allProviders.where((p) => p['engine'] != 'native_miruro').toList();
     }
 
+    // Prioritize native engines so they are searched first!
+    _allProviders.sort((a, b) {
+      bool aNative = (a['engine'] ?? '').toString().startsWith('native_');
+      bool bNative = (b['engine'] ?? '').toString().startsWith('native_');
+      if (aNative && !bNative) return -1;
+      if (!aNative && bNative) return 1;
+      return 0;
+    });
+
     const batchSize = 3;
     for (int i = 0; i < _allProviders.length; i += batchSize) {
       final batch = _allProviders.sublist(
           i, (i + batchSize).clamp(0, _allProviders.length));
       await _searchBatch(batch, season, episode);
-      if (currentStream != null) break; // First valid stream ready.
+      // Removed the break statement here so it continues searching remaining batches in the background
+      // This populates the entire dropdown list!
     }
+
+    // --- USER REQUESTED DEBUG LOGS ---
+    int loaded = _allProviders.length;
+    int successful = _availableStreams.length;
+    // We calculate "failed" based on all loaded providers minus the successful ones, 
+    // keeping in mind some may have been skipped due to early break.
+    int failed = loaded - successful;
+    print("\n=================== PROVIDER DEBUG LOG ===================");
+    print("Loaded Providers: $loaded");
+    print("Successful Providers: $successful");
+    print("Failed Providers (or skipped): $failed");
+    print("Dropdown Count: $successful");
+    print("==========================================================\n");
   }
 
   /// Search a batch of providers concurrently.
@@ -96,8 +121,9 @@ class PlaybackManager {
                   'url': sub['url'] as String,
                 })
             .toList();
-        final info = StreamInfo(
-          providerName: provider['engine'] ?? 'unknown',
+        print("PLAYBACK MANAGER: provider engine is ${provider['engine']}"); final info = StreamInfo(
+          providerName: provider['name'] ?? provider['engine'] ?? 'Unknown Server',
+          engine: provider['engine'] ?? 'webview',
           url: playbackData['url'] as String,
           headers: (playbackData['headers'] as Map?)?.cast<String, String>(),
           qualities: qualities,
@@ -157,6 +183,15 @@ class PlaybackManager {
   /// Set current stream by provider name if exists.
   void setCurrentProviderByName(String name) {
     final idx = _availableStreams.indexWhere((s) => s.providerName == name);
+    if (idx >= 0) {
+      _currentStreamIdx = idx;
+      onCurrentStreamChanged?.call();
+    }
+  }
+
+  /// Set current stream by exact stream object.
+  void setCurrentStream(StreamInfo stream) {
+    final idx = _availableStreams.indexOf(stream);
     if (idx >= 0) {
       _currentStreamIdx = idx;
       onCurrentStreamChanged?.call();

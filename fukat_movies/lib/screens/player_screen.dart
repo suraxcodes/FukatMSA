@@ -103,7 +103,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
             .toList();
         _hasDubAvailable = stream.hasDub;
         _hasSubAvailable = stream.hasSub;
-        _currentEngine = stream.providerName;
+        _currentEngine = stream.engine;
         _selectedSubtitleTrack = local_subtitle.SubtitleTrack.no();
         _isFirstSubtitleLoad = true;
         
@@ -451,7 +451,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
         _isFirstSubtitleLoad = true;
         _hasDubAvailable = stream.hasDub;
         _hasSubAvailable = stream.hasSub;
-        _currentEngine = stream.providerName;
+        _currentEngine = stream.engine;
         // Preserve existing _isDub logic.
         if (_isDub && !_hasDubAvailable && _hasSubAvailable) {
           _isDub = false;
@@ -465,7 +465,17 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
       });
       // Start playback if already playing.
       if (_isPlaying) {
-        _initializeNativePlayer(currentUrl, headers: currentHeaders);
+        if (_currentEngine == 'webview' || !_currentEngine.startsWith('native_')) {
+          _mediaPlayer?.dispose();
+          _mediaPlayer = null;
+          if (webViewController != null) {
+            webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(currentUrl)));
+          }
+        } else if (_currentEngine == 'native_extractor') {
+          _startHeadlessExtractor(currentUrl);
+        } else {
+          _initializeNativePlayer(currentUrl, headers: currentHeaders);
+        }
       }
       return;
     }
@@ -592,9 +602,15 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
       }
     });
 
-    _videoController = VideoController(_mediaPlayer!);
+    _videoController = VideoController(
+      _mediaPlayer!,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: true,
+      ),
+    );
     if (mounted) setState(() {});
 
+    _mediaPlayer!.stream.videoParams.listen((params) { print("VIDEO PARAMS: ${params.w}x${params.h}"); });
     _mediaPlayer!.stream.tracks.listen((tracks) {
       if (mounted) {
         setState(() {
@@ -897,6 +913,9 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
         useShouldInterceptFetchRequest: true,
         javaScriptEnabled: true,
         mediaPlaybackRequiresUserGesture: false,
+        userAgent: Platform.isWindows
+            ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            : "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
       ),
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
@@ -1007,12 +1026,28 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
           setState(() {
             _isExtracting = false;
           });
-          _triggerFailover();
+          _fallbackToWebView();
         }
       });
     } catch (e) {
       print("Headless Extractor error: $e");
-      _triggerFailover();
+      _fallbackToWebView();
+    }
+  }
+
+  void _fallbackToWebView() {
+    print("Headless Extractor: Falling back to regular WebView...");
+    headlessWebView?.dispose();
+    headlessWebView = null;
+    setState(() {
+      _isExtracting = false;
+      _currentEngine = 'webview';
+    });
+    _mediaPlayer?.dispose();
+    _mediaPlayer = null;
+    if (webViewController != null) {
+      webViewController!.loadUrl(
+          urlRequest: URLRequest(url: WebUri(currentUrl)));
     }
   }
 
@@ -1208,141 +1243,69 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
       );
     }
 
-    if (_currentEngine.startsWith('native_') ||
+    print("BUILDING VIDEO PLAYER: _currentEngine=$_currentEngine, isAnime=$_isAnime, currentUrl=$currentUrl"); if (_currentEngine.startsWith('native_') ||
         _currentEngine == 'native_extractor') {
       if (_videoController != null) {
-        return Stack(
-          children: [
-            Container(
-              color: Colors.black,
-              child: MaterialDesktopVideoControlsTheme(
-                normal: MaterialDesktopVideoControlsThemeData(
-                  bottomButtonBar: [
-                    const MaterialDesktopSkipPreviousButton(),
-                    const MaterialDesktopPlayOrPauseButton(),
-                    const MaterialDesktopSkipNextButton(),
-                    const MaterialDesktopVolumeButton(),
-                    const MaterialDesktopPositionIndicator(),
-                    const Spacer(),
-                    _buildSettingsMenu(),
-                    IconButton(
-                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                      onPressed: () async {
-                        await _setFullScreen(!_isDesktopFullscreen);
-                        if (mounted) {
-                          setState(() {
-                            _isDesktopFullscreen = !_isDesktopFullscreen;
-                          });
-                        }
-                      },
-                    ),
-                  ],
+        return Container(
+          color: Colors.black,
+          child: MaterialVideoControlsTheme(
+            normal: MaterialVideoControlsThemeData(
+              padding: const EdgeInsets.only(bottom: 80.0),
+              bottomButtonBarMargin: const EdgeInsets.symmetric(horizontal: 16.0),
+              bottomButtonBar: [
+                const MaterialSkipPreviousButton(),
+                const MaterialPlayOrPauseButton(),
+                const MaterialSkipNextButton(),
+                const MaterialPositionIndicator(),
+                const Spacer(),
+                _buildSettingsMenu(),
+                IconButton(
+                  icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                  onPressed: () async {
+                    await _setFullScreen(!_isDesktopFullscreen);
+                    if (mounted) {
+                      setState(() {
+                        _isDesktopFullscreen = !_isDesktopFullscreen;
+                      });
+                    }
+                  },
                 ),
-                fullscreen: MaterialDesktopVideoControlsThemeData(
-                  bottomButtonBar: [
-                    const MaterialDesktopSkipPreviousButton(),
-                    const MaterialDesktopPlayOrPauseButton(),
-                    const MaterialDesktopSkipNextButton(),
-                    const MaterialDesktopVolumeButton(),
-                    const MaterialDesktopPositionIndicator(),
-                    const Spacer(),
-                    _buildSettingsMenu(),
-                    IconButton(
-                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                      onPressed: () async {
-                        await _setFullScreen(!_isDesktopFullscreen);
-                        if (mounted) {
-                          setState(() {
-                            _isDesktopFullscreen = !_isDesktopFullscreen;
-                          });
-                        }
-                      },
-                    ),
-                  ],
+              ],
+            ),
+            fullscreen: MaterialVideoControlsThemeData(
+              padding: const EdgeInsets.only(bottom: 80.0),
+              bottomButtonBarMargin: const EdgeInsets.symmetric(horizontal: 16.0),
+              bottomButtonBar: [
+                const MaterialSkipPreviousButton(),
+                const MaterialPlayOrPauseButton(),
+                const MaterialSkipNextButton(),
+                const MaterialPositionIndicator(),
+                const Spacer(),
+                _buildSettingsMenu(),
+                IconButton(
+                  icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                  onPressed: () async {
+                    await _setFullScreen(!_isDesktopFullscreen);
+                    if (mounted) {
+                      setState(() {
+                        _isDesktopFullscreen = !_isDesktopFullscreen;
+                      });
+                    }
+                  },
                 ),
-                child: MaterialVideoControlsTheme(
-                normal: MaterialVideoControlsThemeData(
-                  bottomButtonBar: [
-                    IconButton(
-                      icon: const Icon(Icons.replay_10, color: Colors.white),
-                      onPressed: () {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          _mediaPlayer!.seek(pos - const Duration(seconds: 10));
-                        }
-                      },
-                    ),
-                    MaterialPlayOrPauseButton(),
-                    IconButton(
-                      icon: const Icon(Icons.forward_10, color: Colors.white),
-                      onPressed: () {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          _mediaPlayer!.seek(pos + const Duration(seconds: 10));
-                        }
-                      },
-                    ),
-                    MaterialPositionIndicator(),
-                    const Spacer(),
-                    _buildSettingsMenu(),
-                    IconButton(
-                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                      onPressed: () async {
-                        await _setFullScreen(!_isDesktopFullscreen);
-                        if (mounted) {
-                          setState(() {
-                            _isDesktopFullscreen = !_isDesktopFullscreen;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                fullscreen: MaterialVideoControlsThemeData(
-                  bottomButtonBar: [
-                    IconButton(
-                      icon: const Icon(Icons.replay_10, color: Colors.white),
-                      onPressed: () {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          _mediaPlayer!.seek(pos - const Duration(seconds: 10));
-                        }
-                      },
-                    ),
-                    MaterialPlayOrPauseButton(),
-                    IconButton(
-                      icon: const Icon(Icons.forward_10, color: Colors.white),
-                      onPressed: () {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          _mediaPlayer!.seek(pos + const Duration(seconds: 10));
-                        }
-                      },
-                    ),
-                    MaterialPositionIndicator(),
-                    const Spacer(),
-                    IconButton(
-                      icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                      onPressed: () async {
-                        await _setFullScreen(!_isDesktopFullscreen);
-                        if (mounted) {
-                          setState(() {
-                            _isDesktopFullscreen = !_isDesktopFullscreen;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
+              ],
+            ),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
                 child: Video(
                   key: ValueKey(_videoController.hashCode),
                   controller: _videoController!,
                   controls: MaterialVideoControls,
                 ),
-                ),
               ),
             ),
-          ],
+          ),
         );
       } else {
         return Center(
@@ -1366,8 +1329,9 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
             useShouldOverrideUrlLoading: true,
             javaScriptCanOpenWindowsAutomatically: true,
             supportMultipleWindows: true,
-            userAgent:
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            userAgent: Platform.isWindows
+                ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                : "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
             allowsInlineMediaPlayback: true,
             iframeAllowFullscreen: true,
             thirdPartyCookiesEnabled: true,
@@ -1455,8 +1419,12 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Widget _buildServerSelector() {
-    final providers = _activeProviders;
-    if (providers.isEmpty) return SizedBox.shrink();
+    // Only show the dropdown if PlaybackManager has found streams
+    if (_playbackManager == null || _playbackManager!.availableStreams.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final streams = _playbackManager!.availableStreams;
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -1481,46 +1449,42 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
+                child: DropdownButton<StreamInfo>(
                   dropdownColor: const Color.fromARGB(255, 14, 13, 13),
-                  value: currentProviderIndex < providers.length ? currentProviderIndex : null,
+                  value: _playbackManager!.currentStream,
                   isExpanded: true,
                   icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                  items: List.generate(providers.length, (index) {
-                    final provider = providers[index];
-                    String displayName = provider['name'];
+                  items: streams.map((streamInfo) {
+                    String displayName = streamInfo.providerName;
                     
-                    if (_playbackManager != null) {
-                      // Attempt to find metadata if it's already fetched
-                      try {
-                        final streamInfo = _playbackManager!.availableStreams.firstWhere((s) => s.providerName == provider['engine']);
-                        if (streamInfo.hasSub && streamInfo.hasDub) {
-                          displayName += " (Sub + Dub)";
-                        } else if (streamInfo.hasDub) {
-                          displayName += " (Dub)";
-                        } else if (streamInfo.hasSub) {
-                          displayName += " (Sub)";
-                        }
-                      } catch (_) {
-                        // Not fetched yet
-                      }
+                    if (streamInfo.hasSub && streamInfo.hasDub) {
+                      displayName += " (Sub + Dub)";
+                    } else if (streamInfo.hasDub) {
+                      displayName += " (Dub)";
+                    } else if (streamInfo.hasSub) {
+                      displayName += " (Sub)";
                     }
 
-                    return DropdownMenuItem<int>(
-                      value: index,
+                    return DropdownMenuItem<StreamInfo>(
+                      value: streamInfo,
                       child: Text(displayName, style: const TextStyle(color: Colors.white)),
                     );
-                  }),
-                  onChanged: (int? newIndex) {
-                    if (newIndex != null && newIndex != currentProviderIndex) {
+                  }).toList(),
+                  onChanged: (StreamInfo? newStream) {
+                    if (newStream != null && newStream != _playbackManager!.currentStream) {
                       setState(() {
                         if (_mediaPlayer != null) {
                           final pos = _mediaPlayer!.state.position;
                           if (pos > Duration.zero) _lastPlaybackPosition = pos;
                         }
-                        currentProviderIndex = newIndex;
-                        _isPlaying = false;
-                        webViewController = null;
+                        // Set provider by exact name... Wait! If there are duplicates, name is NOT unique.
+                        // I will update PlaybackManager to support setCurrentStream(StreamInfo info).
+                        // Or I can just pass newStream.providerName and it selects the first one. 
+                        // But wait! PlaybackManager setCurrentProviderByName only finds the FIRST index!
+                        // Let's modify playback_manager to find by exact index if possible.
+                        _playbackManager!.setCurrentStream(newStream);
+                        _isPlaying = true;
+                        // DO NOT set webViewController = null here, otherwise InAppWebView won't reload
                         _preparePlaybackUrl();
                       });
                     }
@@ -1532,8 +1496,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
           const SizedBox(width: 12),
           // Sub/Dub toggle only for native engines
           if (_currentEngine.startsWith('native_') || 
-              (currentProviderIndex < providers.length && 
-               providers[currentProviderIndex]['engine']?.toString().startsWith('native_') == true))
+              (_playbackManager!.currentStream?.providerName.startsWith('native_') == true))
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2080,7 +2043,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   Positioned.fill(
                     child: Container(
                       color: Colors.black,
-                      child: Center(child: _buildPlayerSection()),
+                      child: _buildPlayerSection(),
                     ),
                   ),
                   Positioned(
