@@ -116,7 +116,17 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
         }
       });
       if (_isPlaying && urlChanged) {
-        _initializeNativePlayer(currentUrl, headers: currentHeaders);
+        if (_currentEngine == 'webview' || !_currentEngine.startsWith('native_')) {
+          _mediaPlayer?.dispose();
+          _mediaPlayer = null;
+          if (webViewController != null) {
+            webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(currentUrl)));
+          }
+        } else if (_currentEngine == 'native_extractor') {
+          _startHeadlessExtractor(currentUrl);
+        } else {
+          _initializeNativePlayer(currentUrl, headers: currentHeaders);
+        }
       }
     }
   }
@@ -158,6 +168,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Map<String, String>? _extractedStreamHeaders;
   Timer? _extractionTimer;
   Timer? _bufferingTimer;
+  Timer? _progressTimer;
   Duration _lastPlaybackPosition = Duration.zero;
   bool _hasRestoredPosition = false;
 
@@ -181,6 +192,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _networkSub = NetworkService().onSpeedChange.listen((speed) {
       if (mounted) _handleNetworkSpeedChange(speed);
     });
+    _progressTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted && _isPlaying && _mediaPlayer != null) {
+        _saveProgress();
+      }
+    });
     if (!widget.isMovie) {
       _hasDubAvailable = true;
     }
@@ -195,6 +211,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _autoQualityTimer?.cancel();
     _extractionTimer?.cancel();
     _bufferingTimer?.cancel();
+    _progressTimer?.cancel();
     _saveProgress();
     _mediaPlayer?.dispose();
     super.dispose();
@@ -219,16 +236,20 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _saveProgress() {
-    if (_mediaPlayer == null) return;
-    try {
-      final position = _mediaPlayer!.state.position.inSeconds;
-      final duration = _mediaPlayer!.state.duration.inSeconds;
+    int position = 0;
+    int duration = 0;
+    bool isCompleted = false;
 
-      bool isCompleted = false;
+    if (_mediaPlayer != null) {
+      position = _mediaPlayer!.state.position.inSeconds;
+      duration = _mediaPlayer!.state.duration.inSeconds;
+
       if (duration > 0 && position >= duration * 0.9) {
         isCompleted = true; // Mark as watched if 90% completed
       }
+    }
 
+    try {
       ContinueWatchingService.saveItem(
         tmdbId: widget.tmdbId,
         title: widget.title,
@@ -236,8 +257,8 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
         isMovie: widget.isMovie,
         lastSeason: widget.isMovie ? null : int.tryParse(currentSeason),
         lastEpisode: widget.isMovie ? null : int.tryParse(currentEpisode),
-        position: position,
-        duration: duration,
+        position: position > 0 ? position : null,
+        duration: duration > 0 ? duration : null,
         isCompleted: isCompleted,
       );
     } catch (e) {
@@ -424,6 +445,19 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     setState(() {
       currentImdbId =
           imdbId ?? widget.tmdbId; // Fallback to TMDB if IMDB not found
+          
+      // Restore progress
+      final savedItem = ContinueWatchingService.getItem(widget.tmdbId);
+      if (savedItem != null && savedItem['isCompleted'] != true) {
+        if (!widget.isMovie) {
+          if (savedItem['lastSeason'] != null) currentSeason = savedItem['lastSeason'].toString();
+          if (savedItem['lastEpisode'] != null) currentEpisode = savedItem['lastEpisode'].toString();
+        }
+        if (savedItem['position'] != null) {
+          _lastPlaybackPosition = Duration(seconds: savedItem['position']);
+        }
+      }
+
       isInitializing = false;
     });
 
@@ -765,38 +799,46 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   // Handle episode selection from EpisodeSidePanel (desktop layout)
   void _onEpisodeSelected(String season, String episode) {
+    _mediaPlayer?.dispose();
+    _mediaPlayer = null;
+
     setState(() {
       currentSeason = season;
       currentEpisode = episode;
       currentProviderIndex = 0;
-      _isPlaying = false;
-      webViewController = null;
+      _isPlaying = true;
       _lastPlaybackPosition = Duration.zero;
+      currentUrl = "";
+      currentHeaders = null;
     });
+    
     _playbackManager?.clearCache();
     if (_isAnime) {
       _playbackManager?.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
     } else {
       _playbackManager?.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
     }
-    _preparePlaybackUrl().then((_) {
-      _startPlayback();
-    });
   }
 
   // Handle audio (dub) toggle from EpisodeSidePanel (desktop layout)
   void _onAudioChanged(bool isDub) {
     if (_isDub != isDub) {
+      _mediaPlayer?.dispose();
+      _mediaPlayer = null;
+
       setState(() {
         _isDub = isDub;
+        _isPlaying = true;
+        currentUrl = "";
+        currentHeaders = null;
       });
+      
       _playbackManager?.clearCache();
       if (_isAnime) {
         _playbackManager?.initAndSearch(isAnime: true, isDub: _isDub, season: int.parse(currentSeason), episode: int.parse(currentEpisode));
       } else {
         _playbackManager?.initAndSearch(season: int.parse(currentSeason), episode: int.parse(currentEpisode));
       }
-      _preparePlaybackUrl();
     }
   }
 
@@ -1363,6 +1405,9 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
           ]),
           onWebViewCreated: (controller) {
             webViewController = controller;
+            if (currentUrl.isNotEmpty) {
+              controller.loadUrl(urlRequest: URLRequest(url: WebUri(currentUrl)));
+            }
           },
           onEnterFullscreen: (controller) async {
             FocusManager.instance.primaryFocus?.unfocus();

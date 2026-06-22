@@ -57,6 +57,15 @@ class ContinueWatchingService {
     return false;
   }
 
+  static Map<String, dynamic>? getItem(String tmdbId) {
+    if (!_box.isOpen) return null;
+    final item = _box.get(tmdbId);
+    if (item != null && item is Map) {
+      return Map<String, dynamic>.from(item);
+    }
+    return null;
+  }
+
   static List<Map<String, dynamic>> _extractItems(Box box) {
     return box.values
         .map((item) => Map<String, dynamic>.from(item))

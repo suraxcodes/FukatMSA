@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 class StreamingAggregatorService {
   // Replace these with your deployed Vercel/Render URLs!
   static String miruroApiUrl = 'https://miruro-apimsa.onrender.com';
+  static String miruroBackupApiUrl = 'https://anime-api-aceq.onrender.com';
   static String kuudereApiUrl = 'https://kuudere-apimsa.onrender.com';
   static String proxifyStreamsUrl = 'https://proxify-streamsmsa.onrender.com';
 
@@ -62,126 +63,134 @@ class StreamingAggregatorService {
           final anilistId = media['id'];
           print("Aggregator: Anilist ID resolved: $anilistId");
           
-          // 2. Fetch episodes list from Miruro
-          final epUrl = Uri.parse('$miruroApiUrl/episodes/$anilistId');
-          print("Aggregator: Miruro fetching episodes list: $epUrl");
+          final apiUrls = [miruroApiUrl, miruroBackupApiUrl];
           
-          final epRes = await http.get(epUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
-          
-          print("Aggregator: Miruro episodes status: ${epRes.statusCode}");
-          if (epRes.statusCode == 200) {
-            final epData = json.decode(epRes.body);
-            final providers = epData['providers'] as Map<String, dynamic>? ?? {};
-            
-            List<String> providerKeys = providers.keys.toList();
-            // Prioritize reliable providers like 'ally' (Zoro) and 'kiwi' (Gogo)
-            providerKeys.sort((a, b) {
-              // Priority 0: The user's preferred provider from the last successfully played episode
-              if (preferredProvider != null) {
-                if (a == preferredProvider) return -1;
-                if (b == preferredProvider) return 1;
-              }
+          for (String currentApiUrl in apiUrls) {
+            try {
+              // 2. Fetch episodes list from Miruro API
+              final epUrl = Uri.parse('$currentApiUrl/episodes/$anilistId');
+              print("Aggregator: Miruro fetching episodes list: $epUrl");
               
-              const priority = {'ally': 1, 'kiwi': 2, 'bonk': 3, 'ANIMEDUNYA': 4};
-              final pA = priority[a] ?? 99;
-              final pB = priority[b] ?? 99;
-              return pA.compareTo(pB);
-            });
-            
-            List<Map<String, dynamic>> allStreams = [];
-            List<Map<String, dynamic>> allSubtitles = [];
-            bool overallHasSub = false;
-            bool overallHasDub = false;
-            
-            // Try each provider and aggregate all valid HLS/MP4 streams
-            for (var providerName in providerKeys) {
-              final provData = providers[providerName];
-              final subEps = provData?['episodes']?['sub'] as List<dynamic>? ?? [];
-              final dubEps = provData?['episodes']?['dub'] as List<dynamic>? ?? [];
+              final epRes = await http.get(epUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 60));
               
-              if (subEps.isNotEmpty) overallHasSub = true;
-              if (dubEps.isNotEmpty) overallHasDub = true;
-              
-              String? targetWatchId;
-              try {
-                final targetList = isDub ? dubEps : subEps;
-                final match = targetList.firstWhere((e) => e['number'] == ep);
-                targetWatchId = match['id'];
-              } catch (_) {
-                if (isDub) {
-                  print("Aggregator: Dub not found in $providerName for ep $ep. Falling back to Sub!");
-                  try {
-                    final match = subEps.firstWhere((e) => e['number'] == ep);
-                    targetWatchId = match['id'];
-                  } catch (__) {
-                    continue;
-                  }
-                } else {
-                  continue;
-                }
-              }
-              
-              print("Aggregator: Miruro found match in provider $providerName -> $targetWatchId");
-              
-              final streamUrl = Uri.parse('$miruroApiUrl/$targetWatchId');
-              print("Aggregator: Miruro fetching stream from: $streamUrl");
-              
-              try {
-                final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 20));
-                print("Aggregator: Miruro stream status ($providerName): ${streamRes.statusCode}");
+              print("Aggregator: Miruro episodes status: ${epRes.statusCode} on $currentApiUrl");
+              if (epRes.statusCode == 200) {
+                final epData = json.decode(epRes.body);
+                final providers = epData['providers'] as Map<String, dynamic>? ?? {};
                 
-                if (streamRes.statusCode == 200) {
-                  final streamData = json.decode(streamRes.body);
-                  final streams = streamData['streams'] as List<dynamic>? ?? [];
-                  
-                  for (var s in streams) {
-                    if ((s['type'] == 'hls' || s['type'] == 'mp4') && s['url'] != null && s['url'].toString().isNotEmpty) {
-                      allStreams.add({
-                        'quality': '${s['quality']?.toString() ?? 'Auto'} ($providerName)',
-                        'url': s['url'].toString(),
-                        'headers': {
-                          if (s['referer'] != null) 'Referer': s['referer'].toString(),
-                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        }
-                      });
-                    }
+                List<String> providerKeys = providers.keys.toList();
+                // Prioritize reliable providers like 'ally' (Zoro) and 'kiwi' (Gogo)
+                providerKeys.sort((a, b) {
+                  // Priority 0: The user's preferred provider from the last successfully played episode
+                  if (preferredProvider != null) {
+                    if (a == preferredProvider) return -1;
+                    if (b == preferredProvider) return 1;
                   }
                   
-                  if (streamData['subtitles'] != null) {
-                    final subs = streamData['subtitles'] as List<dynamic>;
-                    for (var sub in subs) {
-                      if (sub['url'] != null) {
-                        allSubtitles.add({
-                          'url': sub['url'].toString(),
-                          'lang': '${sub['lang']?.toString() ?? 'Unknown'} ($providerName)',
-                        });
+                  const priority = {'ally': 1, 'kiwi': 2, 'bonk': 3, 'ANIMEDUNYA': 4};
+                  final pA = priority[a] ?? 99;
+                  final pB = priority[b] ?? 99;
+                  return pA.compareTo(pB);
+                });
+                
+                List<Map<String, dynamic>> allStreams = [];
+                List<Map<String, dynamic>> allSubtitles = [];
+                bool overallHasSub = false;
+                bool overallHasDub = false;
+                
+                // Try each provider and aggregate all valid HLS/MP4 streams
+                for (var providerName in providerKeys) {
+                  final provData = providers[providerName];
+                  final subEps = provData?['episodes']?['sub'] as List<dynamic>? ?? [];
+                  final dubEps = provData?['episodes']?['dub'] as List<dynamic>? ?? [];
+                  
+                  if (subEps.isNotEmpty) overallHasSub = true;
+                  if (dubEps.isNotEmpty) overallHasDub = true;
+                  
+                  String? targetWatchId;
+                  try {
+                    final targetList = isDub ? dubEps : subEps;
+                    final match = targetList.firstWhere((e) => e['number'] == ep);
+                    targetWatchId = match['id'];
+                  } catch (_) {
+                    if (isDub) {
+                      print("Aggregator: Dub not found in $providerName for ep $ep. Falling back to Sub!");
+                      try {
+                        final match = subEps.firstWhere((e) => e['number'] == ep);
+                        targetWatchId = match['id'];
+                      } catch (__) {
+                        continue;
                       }
+                    } else {
+                      continue;
                     }
                   }
-                } else {
-                  print("Aggregator: Miruro stream body ($providerName): ${streamRes.body}");
+                  
+                  print("Aggregator: Miruro found match in provider $providerName -> $targetWatchId");
+                  
+                  final streamUrl = Uri.parse('$currentApiUrl/$targetWatchId');
+                  print("Aggregator: Miruro fetching stream from: $streamUrl");
+                  
+                  try {
+                    final streamRes = await http.get(streamUrl, headers: {'Referer': 'https://fukatmovies.com'}).timeout(const Duration(seconds: 20));
+                    print("Aggregator: Miruro stream status ($providerName): ${streamRes.statusCode}");
+                    
+                    if (streamRes.statusCode == 200) {
+                      final streamData = json.decode(streamRes.body);
+                      final streams = streamData['streams'] as List<dynamic>? ?? [];
+                      
+                      for (var s in streams) {
+                        if ((s['type'] == 'hls' || s['type'] == 'mp4') && s['url'] != null && s['url'].toString().isNotEmpty) {
+                          allStreams.add({
+                            'quality': '${s['quality']?.toString() ?? 'Auto'} ($providerName)',
+                            'url': s['url'].toString(),
+                            'headers': {
+                              if (s['referer'] != null) 'Referer': s['referer'].toString(),
+                              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            }
+                          });
+                        }
+                      }
+                      
+                      if (streamData['subtitles'] != null) {
+                        final subs = streamData['subtitles'] as List<dynamic>;
+                        for (var sub in subs) {
+                          if (sub['url'] != null) {
+                            allSubtitles.add({
+                              'url': sub['url'].toString(),
+                              'lang': '${sub['lang']?.toString() ?? 'Unknown'} ($providerName)',
+                            });
+                          }
+                        }
+                      }
+                    } else {
+                      print("Aggregator: Miruro stream body ($providerName): ${streamRes.body}");
+                    }
+                  } catch (e) {
+                    print("Aggregator: Miruro error fetching stream from $providerName: $e");
+                  }
                 }
-              } catch (e) {
-                print("Aggregator: Miruro error fetching stream from $providerName: $e");
+                
+                if (allStreams.isNotEmpty) {
+                  print("Aggregator: Returning from Miruro: ${allStreams.length} qualities aggregated from multiple providers. Dub: $overallHasDub, Sub: $overallHasSub");
+                  return {
+                    'streams': allStreams,
+                    'url': allStreams.first['url'], // Fallback legacy
+                    'headers': allStreams.first['headers'], // Fallback legacy
+                    'hasSub': overallHasSub,
+                    'hasDub': overallHasDub,
+                    'subtitles': allSubtitles,
+                  };
+                }
+                
+                print("Aggregator: Miruro exhausted all providers on $currentApiUrl, no valid stream found.");
+                
+              } else {
+                 print("Aggregator: Miruro episodes body: ${epRes.body}");
               }
+            } catch (e) {
+              print("Aggregator: Error with Miruro API on $currentApiUrl: $e");
             }
-            
-            if (allStreams.isNotEmpty) {
-              print("Aggregator: Returning from Miruro: ${allStreams.length} qualities aggregated from multiple providers. Dub: $overallHasDub, Sub: $overallHasSub");
-              return {
-                'streams': allStreams,
-                'url': allStreams.first['url'], // Fallback legacy
-                'headers': allStreams.first['headers'], // Fallback legacy
-                'hasSub': overallHasSub,
-                'hasDub': overallHasDub,
-                'subtitles': allSubtitles,
-              };
-            }
-            
-            print("Aggregator: Miruro exhausted all providers, no valid stream found.");
-            
-          } else {
-             print("Aggregator: Miruro episodes body: ${epRes.body}");
           }
         }
       } else {
