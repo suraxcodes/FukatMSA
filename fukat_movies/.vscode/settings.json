@@ -1,0 +1,17 @@
+{
+  "terminal.integrated.env.windows": {
+    "MIRURO_API_URL": "https://miruro-apimsa.onrender.com",
+    "KUUDERE_API_URL": "https://kuudere-apimsa.onrender.com",
+    "PROXIFY_STREAMS_URL": "https://proxify-streamsmsa.onrender.com"
+  },
+  "terminal.integrated.env.osx": {
+    "MIRURO_API_URL": "https://miruro-apimsa.onrender.com",
+    "KUUDERE_API_URL": "https://kuudere-apimsa.onrender.com",
+    "PROXIFY_STREAMS_URL": "https://proxify-streamsmsa.onrender.com"
+  },
+  "terminal.integrated.env.linux": {
+    "MIRURO_API_URL": "https://miruro-apimsa.onrender.com",
+    "KUUDERE_API_URL": "https://kuudere-apimsa.onrender.com",
+    "PROXIFY_STREAMS_URL": "https://proxify-streamsmsa.onrender.com"
+  }
+}

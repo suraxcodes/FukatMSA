@@ -106,9 +106,6 @@ class AdBlockService {
             return false;
           }
         }, true);
-        // We no longer force the video to z-index 9999, as that hides the JWPlayer controls
-        // underneath the video and prevents the user from clicking the timeline or icons.
-        // The player should already be full-screen within its iframe container.
       })();
     """;
   }
