@@ -7,6 +7,8 @@ class StreamingAggregatorService {
   static String miruroBackupApiUrl = 'https://anime-api-aceq.onrender.com';
   static String kuudereApiUrl = 'https://kuudere-apimsa.onrender.com';
   static String proxifyStreamsUrl = 'https://proxify-streamsmsa.onrender.com';
+  static String omssApiUrl = 'http://127.0.0.1:3000'; // Replace with deployed backend URL later
+  static String flyxApiUrl = 'http://127.0.0.1:3001';
 
   static String? preferredProvider; // Added to remember the working provider
 
@@ -14,18 +16,23 @@ class StreamingAggregatorService {
   static Future<Map<String, dynamic>?> getNativeStreamingUrl({
     required String title,
     required String engine,
+    String? tmdbId,
+    bool isMovie = true,
     int season = 1,
     int episodeNumber = 1,
     bool isDub = false,
   }) async {
     print("Aggregator: Resolving $title (S$season E$episodeNumber) via $engine");
 
-    if (engine == 'native_miruro') {
+    if (engine == 'native_omss' && tmdbId != null) {
+      return await _getOmssStream(tmdbId, isMovie, season, episodeNumber);
+    } else if (engine == 'native_flyx' && tmdbId != null) {
+      return await _getFlyxStream(tmdbId, isMovie, season, episodeNumber, isDub);
+    } else if (engine == 'native_miruro') {
       return await _getMiruroStream(title, season, episodeNumber, isDub);
     } else if (engine == 'native_proxify') {
       return await _getProxifyStream(title, episodeNumber);
     }
-
     return null;
   }
 
@@ -219,6 +226,162 @@ class StreamingAggregatorService {
       }
     } catch (e) {
       print("Proxify API Error: $e");
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _getOmssStream(String tmdbId, bool isMovie, int season, int episode) async {
+    try {
+      final url = isMovie 
+          ? Uri.parse('$omssApiUrl/v1/movies/$tmdbId')
+          : Uri.parse('$omssApiUrl/v1/tv/$tmdbId/seasons/$season/episodes/$episode');
+
+      print("Aggregator: Fetching OMSS stream from $url");
+      final response = await http.get(url).timeout(const Duration(seconds: 40));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final sources = data['sources'] as List<dynamic>? ?? [];
+
+        if (sources.isNotEmpty) {
+          List<Map<String, dynamic>> allStreams = sources.map((s) {
+            String streamUrl = s['url'].toString();
+            Map<String, String> finalHeaders = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            };
+
+            // BYPASS OMSS PROXY FOR FLUTTER: native players don't need CORS bypass
+            // and going through the proxy breaks video `Range: bytes=0-` headers
+            if (streamUrl.contains('/v1/proxy?data=')) {
+              try {
+                final uri = Uri.parse(streamUrl.startsWith('/v1') ? '$omssApiUrl$streamUrl' : streamUrl);
+                final dataStr = uri.queryParameters['data'];
+                if (dataStr != null) {
+                  final decoded = json.decode(dataStr);
+                  if (decoded['url'] != null) {
+                    streamUrl = decoded['url'].toString();
+                    if (decoded['headers'] != null) {
+                      final Map<String, dynamic> proxyHeaders = decoded['headers'];
+                      proxyHeaders.forEach((k, v) {
+                        if (v != null && v.toString().isNotEmpty) {
+                          finalHeaders[k] = v.toString();
+                        }
+                      });
+                    }
+                  }
+                }
+              } catch (e) {
+                print("Failed to unwrap OMSS proxy URL: $e");
+                if (streamUrl.startsWith('/v1')) streamUrl = '$omssApiUrl$streamUrl';
+              }
+            } else if (streamUrl.startsWith('/v1')) {
+              streamUrl = '$omssApiUrl$streamUrl';
+            }
+
+            return {
+              'quality': '${s['quality'] ?? 'Auto'} (${s['name'] ?? 'OMSS'})',
+              'url': streamUrl,
+              'headers': finalHeaders
+            };
+          }).toList();
+
+          return {
+            'streams': allStreams,
+            'url': allStreams.first['url'],
+            'headers': allStreams.first['headers'],
+            'hasSub': true,
+            'hasDub': true,
+            'subtitles': [], 
+          };
+        }
+      } else {
+        print("Aggregator: OMSS failed with status ${response.statusCode}");
+      }
+    } catch (e) {
+      print("OMSS API Error: $e");
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _getFlyxStream(String tmdbId, bool isMovie, int season, int episode, bool isDub) async {
+    try {
+      final url = isMovie 
+          ? Uri.parse('$flyxApiUrl/api/stream/extract?tmdbId=$tmdbId&type=movie')
+          : Uri.parse('$flyxApiUrl/api/stream/extract?tmdbId=$tmdbId&type=tv&season=$season&episode=$episode');
+
+      print("✅ [Flyx Aggregator] Fetching Flyx stream from $url");
+      final response = await http.get(url).timeout(const Duration(seconds: 40));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final sources = data['sources'] as List<dynamic>? ?? [];
+        
+        print("✅ [Flyx Aggregator] SUCCESS (200 OK) - Found ${sources.length} stream(s)");
+
+        if (sources.isNotEmpty) {
+          List<Map<String, dynamic>> allStreams = sources.map((s) {
+            String qualityLabel = '${s['quality'] ?? 'Auto'} (${s['title'] ?? 'Flyx'})';
+            if (s['language'] != null) {
+              qualityLabel += ' [${s['language'].toString().toUpperCase()}]';
+            }
+            
+            // We MUST use the local proxy to bypass ISP blocking.
+            // 1. If we use directUrl, the ISP in India blocks the TikTok CDN video segments.
+            // 2. If we use the Cloudflare proxy (s['url']), Cloudflare blocks the master playlist fetch (403).
+            // 3. Solution: Use localhost proxy. Local proxy fetches master playlist (succeeds via residential IP),
+            //    and rewrites segment URLs to use Cloudflare proxy (succeeds bypassing ISP block).
+            String rawDirectUrl = s['directUrl'] != null ? s['directUrl'].toString() : s['url'].toString();
+            String referer = s['referer'] != null ? s['referer'].toString() : 'https://hexa.su/';
+            String streamUrl = '$flyxApiUrl/api/stream-proxy?url=${Uri.encodeComponent(rawDirectUrl)}&referer=${Uri.encodeComponent(referer)}';
+            
+            print("🎥 [Flyx Aggregator] Stream parsed: $qualityLabel -> URL: $streamUrl");
+            
+            return {
+              'quality': qualityLabel,
+              'url': streamUrl,
+              'language': s['language']?.toString().toLowerCase(),
+              'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                if (s['referer'] != null) 'Referer': s['referer'].toString(),
+                if (s['referer'] != null) 'Origin': s['referer'].toString(),
+              }
+            };
+          }).toList();
+          
+          // Sort streams so that if isDub is true, dub streams appear first
+          allStreams.sort((a, b) {
+            bool aIsDub = a['quality'].toString().toLowerCase().contains('dub') || a['language'] == 'en';
+            bool bIsDub = b['quality'].toString().toLowerCase().contains('dub') || b['language'] == 'en';
+            
+            if (isDub) {
+              if (aIsDub && !bIsDub) return -1;
+              if (!aIsDub && bIsDub) return 1;
+            } else {
+              if (!aIsDub && bIsDub) return -1;
+              if (aIsDub && !bIsDub) return 1;
+            }
+            return 0;
+          });
+          
+          print("✅ [Flyx Aggregator] Returning ${allStreams.length} processed streams back to player!");
+
+          return {
+            'streams': allStreams,
+            'url': allStreams.first['url'],
+            'headers': allStreams.first['headers'],
+            'hasSub': true,
+            'hasDub': true,
+            'subtitles': [], 
+          };
+        } else {
+           print("❌ [Flyx Aggregator] Response returned 0 sources.");
+        }
+      } else {
+        print("❌ [Flyx Aggregator] Flyx failed with status ${response.statusCode}");
+        print("❌ [Flyx Aggregator] Error body: ${response.body}");
+      }
+    } catch (e) {
+      print("❌ [Flyx Aggregator] API Exception: $e");
     }
     return null;
   }

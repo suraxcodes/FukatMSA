@@ -14,6 +14,8 @@ class EpisodeSidePanel extends StatefulWidget {
   final bool isDub;
   final bool hasDub;
   final ValueChanged<bool> onAudioChanged;
+  final Set<String> watchedEpisodes;
+  final Map<String, int> seasonEpisodeCounts;
 
   const EpisodeSidePanel({
     Key? key,
@@ -25,6 +27,8 @@ class EpisodeSidePanel extends StatefulWidget {
     this.isDub = false,
     this.hasDub = false,
     required this.onAudioChanged,
+    required this.watchedEpisodes,
+    this.seasonEpisodeCounts = const {},
   }) : super(key: key);
 
   @override
@@ -116,6 +120,11 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                     child: Row(
                       children: widget.seasons.map((season) {
                       final isSelected = season == _selectedSeason;
+                      int watchedCount = widget.watchedEpisodes.where((e) => e.startsWith("${season}_")).length;
+                      int totalCount = widget.seasonEpisodeCounts[season] ?? 0;
+                      bool isSeasonWatched = totalCount > 0 && watchedCount >= totalCount;
+                      print("Season: $season, Watched: $watchedCount, Total: $totalCount, IsWatched: $isSeasonWatched");
+                      
                       return GestureDetector(
                         onTap: () {
                           if (!isSelected) {
@@ -127,7 +136,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                           margin: const EdgeInsets.only(right: 12),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF8A2BE2) : const Color(0xFF222222),
+                            color: isSelected ? const Color(0xFF8A2BE2) : (isSeasonWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: isSelected ? [
                               BoxShadow(color: const Color(0xFF8A2BE2).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
@@ -136,7 +145,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                           child: Text(
                             'S$season',
                             style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.white70,
+                              color: isSelected ? Colors.white : (isSeasonWatched ? Colors.white24 : Colors.white),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -169,6 +178,8 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                 child: Row(
                   children: _currentEpisodes.map((ep) {
                     final isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
+                    final isWatched = widget.watchedEpisodes.contains("${_selectedSeason}_$ep");
+                    
                     return GestureDetector(
                       onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
                       child: Container(
@@ -177,7 +188,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                         height: 50,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isPlaying ? Colors.cyan : const Color(0xFF222222),
+                          color: isPlaying ? Colors.cyan : (isWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: isPlaying ? [
                               BoxShadow(color: Colors.cyan.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
@@ -186,7 +197,7 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                         child: Text(
                           ep,
                           style: TextStyle(
-                            color: isPlaying ? Colors.black : Colors.white70,
+                            color: isPlaying ? Colors.black : (isWatched ? Colors.white24 : Colors.white),
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),

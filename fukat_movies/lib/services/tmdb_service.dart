@@ -139,19 +139,29 @@ class TmdbService {
       
       return episodes.where((ep) {
         if (ep['episode_number'] == null) return false;
-        if (ep['air_date'] != null) {
+        
+        final airDateStr = ep['air_date'];
+        if (airDateStr != null && airDateStr.toString().trim().isNotEmpty) {
           try {
-            final airDate = DateTime.parse(ep['air_date']);
+            final airDate = DateTime.parse(airDateStr.toString().trim());
             // 7-day buffer: shows episodes airing this week (to handle timezones & early leaks) 
             // but hides episodes weeks or months in the future.
             if (airDate.isAfter(now.add(const Duration(days: 7)))) {
               return false;
             }
-          } catch (_) {}
+          } catch (e) {
+            if (kDebugMode) {
+              print('Warning: Could not parse air_date "$airDateStr" for episode ${ep['episode_number']}. Error: $e');
+            }
+          }
         }
         return true;
       }).toList();
-    } catch (_) {
+    } catch (e, stack) {
+      if (kDebugMode) {
+        print('Error fetching episodes for season $seasonNumber of show $tmdbId: $e');
+        print(stack);
+      }
       return [];
     }
   }

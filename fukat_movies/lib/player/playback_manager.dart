@@ -38,6 +38,8 @@ class PlaybackManager {
   List<Map<String, dynamic>> _allProviders = [];
   // Cached successful streams for the current playback session.
   final List<StreamInfo> _availableStreams = [];
+  // Detailed logs for the debug output.
+  final List<String> _detailedLogs = [];
   // Index of the currently playing provider in _availableStreams.
   int _currentStreamIdx = -1;
 
@@ -63,10 +65,11 @@ class PlaybackManager {
   /// Initialise providers list and start batch search.
   Future<void> initAndSearch({bool isAnime = false, bool isDub = false, int season = 1, int episode = 1}) async {
     _currentIsDub = isDub;
+    _detailedLogs.clear();
     _allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
     
     if (isAnime) {
-      _allProviders = _allProviders.where((p) => p['engine'] == 'native_miruro').toList();
+      _allProviders = _allProviders.where((p) => p['engine'] == 'native_miruro' || p['engine'] == 'native_flyx').toList();
     } else {
       _allProviders = _allProviders.where((p) => p['engine'] != 'native_miruro').toList();
     }
@@ -91,23 +94,30 @@ class PlaybackManager {
 
     // --- USER REQUESTED DEBUG LOGS ---
     int loaded = _allProviders.length;
-    int successful = _availableStreams.length;
-    // We calculate "failed" based on all loaded providers minus the successful ones, 
-    // keeping in mind some may have been skipped due to early break.
+    // A single provider can return multiple streams (e.g. 1080p, 720p), so count unique providers
+    int successful = _availableStreams.map((s) => s.providerName).toSet().length;
     int failed = loaded - successful;
+    int dropdownCount = _availableStreams.length;
+    
     print("\n=================== PROVIDER DEBUG LOG ===================");
     print("Loaded Providers: $loaded");
     print("Successful Providers: $successful");
     print("Failed Providers (or skipped): $failed");
-    print("Dropdown Count: $successful");
+    print("Dropdown Count (Total Streams): $dropdownCount");
+    print("\n--- DETAILED RESULTS ---");
+    for (var log in _detailedLogs) {
+      print(log);
+    }
     print("==========================================================\n");
   }
 
   /// Search a batch of providers concurrently.
   Future<void> _searchBatch(List<Map<String, dynamic>> batch, int season, int episode) async {
     final futures = batch.map((provider) async {
+      final pName = provider['name'] ?? provider['engine'] ?? 'Unknown Server';
       final playbackData = await _buildPlaybackUrl(provider, season, episode);
       if (playbackData != null && playbackData['url'] != null) {
+        _detailedLogs.add("✅ [$pName] SUCCESS (200 OK) - Found ${playbackData['streams']?.length ?? 1} stream(s)");
         final qualities = (playbackData['streams'] as List<dynamic>? ?? [])
             .map((s) => {
                   'quality': s['quality'],
@@ -137,6 +147,8 @@ class PlaybackManager {
           onCurrentStreamChanged?.call();
         }
         onStreamsUpdated?.call();
+      } else {
+        _detailedLogs.add("❌ [$pName] FAILED (Returned Null or Blocked)");
       }
     }).toList();
     await Future.wait(futures);
@@ -147,9 +159,20 @@ class PlaybackManager {
       Map<String, dynamic> provider, int season, int episode) async {
     final String engine = provider['engine'] ?? 'webview';
     if (engine.startsWith('native_') && engine != 'native_extractor') {
+      if (engine == 'native_omss' && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("OMSS Super Aggregator is searching 17 providers... This may take up to 30 seconds, please wait!"),
+            duration: Duration(seconds: 5),
+            backgroundColor: Colors.blueGrey,
+          ),
+        );
+      }
       return await StreamingAggregatorService.getNativeStreamingUrl(
         title: title,
         engine: engine,
+        tmdbId: tmdbId,
+        isMovie: isMovie,
         season: season,
         episodeNumber: episode,
         isDub: _currentIsDub,

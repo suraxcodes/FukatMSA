@@ -18,7 +18,23 @@ class ContinueWatchingService {
     int? position,
     int? duration,
     bool isCompleted = false,
+    String? markEpisodeWatched, // e.g., "1_1"
   }) async {
+    final existingItem = _box.get(tmdbId);
+    List<String> watchedEpisodes = [];
+    
+    if (existingItem != null && existingItem is Map) {
+      if (existingItem['watchedEpisodes'] != null) {
+        watchedEpisodes = List<String>.from(existingItem['watchedEpisodes']);
+      }
+      // Retain existing poster if new one is null
+      posterPath ??= existingItem['posterPath'] as String?;
+    }
+    
+    if (markEpisodeWatched != null && !watchedEpisodes.contains(markEpisodeWatched)) {
+      watchedEpisodes.add(markEpisodeWatched);
+    }
+
     await _box.put(tmdbId, {
       'tmdbId': tmdbId,
       'title': title,
@@ -29,6 +45,7 @@ class ContinueWatchingService {
       'position': position,
       'duration': duration,
       'isCompleted': isCompleted,
+      'watchedEpisodes': watchedEpisodes,
       'savedAt': DateTime.now().toIso8601String(),
     });
     
@@ -38,6 +55,15 @@ class ContinueWatchingService {
         print("Background progress sync paused: $e");
       })
     );
+  }
+
+  static List<String> getWatchedEpisodes(String tmdbId) {
+    if (!_box.isOpen) return [];
+    final item = _box.get(tmdbId);
+    if (item != null && item is Map && item['watchedEpisodes'] != null) {
+      return List<String>.from(item['watchedEpisodes']);
+    }
+    return [];
   }
 
   static Future<void> removeItem(String tmdbId) async {

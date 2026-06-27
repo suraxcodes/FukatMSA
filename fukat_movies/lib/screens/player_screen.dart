@@ -81,6 +81,8 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   String currentSeason = "1";
   String currentEpisode = "1";
   bool _isPlaying = false;
+  Set<String> _watchedEpisodes = {};
+  Map<String, int> _seasonEpisodeCounts = {};
 
   // Callback invoked by PlaybackManager when stream list updates
   void _onStreamsUpdated() {
@@ -235,10 +237,10 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
   }
 
-  void _saveProgress() {
+  void _saveProgress({bool forceComplete = false}) {
     int position = 0;
     int duration = 0;
-    bool isCompleted = false;
+    bool isCompleted = forceComplete;
 
     if (_mediaPlayer != null) {
       position = _mediaPlayer!.state.position.inSeconds;
@@ -250,6 +252,13 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     try {
+      String? markEpisodeWatched;
+      if (!widget.isMovie && isCompleted) {
+        markEpisodeWatched = "${currentSeason}_$currentEpisode";
+        if (!_watchedEpisodes.contains(markEpisodeWatched)) {
+           setState(() { _watchedEpisodes.add(markEpisodeWatched!); });
+        }
+      }
       ContinueWatchingService.saveItem(
         tmdbId: widget.tmdbId,
         title: widget.title,
@@ -260,6 +269,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
         position: position > 0 ? position : null,
         duration: duration > 0 ? duration : null,
         isCompleted: isCompleted,
+        markEpisodeWatched: markEpisodeWatched,
       );
     } catch (e) {
       print('Error saving progress: $e');
@@ -423,6 +433,10 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
               } catch (_) {}
             }
             seasons.add(sNum.toString());
+            final epCount = season['episode_count'];
+            if (epCount != null) {
+              _seasonEpisodeCounts[sNum.toString()] = int.tryParse(epCount.toString()) ?? 0;
+            }
           }
         }
         setState(() {
@@ -448,12 +462,15 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
           
       // Restore progress
       final savedItem = ContinueWatchingService.getItem(widget.tmdbId);
-      if (savedItem != null && savedItem['isCompleted'] != true) {
+      _watchedEpisodes = ContinueWatchingService.getWatchedEpisodes(widget.tmdbId).toSet();
+      
+      if (savedItem != null) {
         if (!widget.isMovie) {
           if (savedItem['lastSeason'] != null) currentSeason = savedItem['lastSeason'].toString();
           if (savedItem['lastEpisode'] != null) currentEpisode = savedItem['lastEpisode'].toString();
         }
-        if (savedItem['position'] != null) {
+        // Always load position if episode is not completed or if it is completed but it's a movie
+        if (savedItem['isCompleted'] != true && savedItem['position'] != null) {
           _lastPlaybackPosition = Duration(seconds: savedItem['position']);
         }
       }
@@ -707,6 +724,13 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
       }
     });
 
+    _mediaPlayer!.stream.completed.listen((completed) {
+      if (completed && !widget.isMovie && mounted) {
+        _saveProgress();
+        _playNextEpisode();
+      }
+    });
+
     _mediaPlayer!.stream.duration.listen((duration) {
       if (mounted &&
           !_hasRestoredPosition &&
@@ -797,8 +821,22 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
   }
 
+  void _playNextEpisode() {
+    if (widget.isMovie) return;
+    int? s = int.tryParse(currentSeason);
+    int? e = int.tryParse(currentEpisode);
+    if (s == null || e == null) return;
+    
+    // Very naive auto-advance: simply increment episode.
+    // If it fails, provider will return 0 streams. 
+    int nextE = e + 1;
+    _onEpisodeSelected(s.toString(), nextE.toString());
+    Fluttertoast.showToast(msg: "Playing next episode...", backgroundColor: Colors.green);
+  }
+
   // Handle episode selection from EpisodeSidePanel (desktop layout)
   void _onEpisodeSelected(String season, String episode) {
+    _saveProgress(forceComplete: true); // Save progress of the current episode before switching
     _mediaPlayer?.dispose();
     _mediaPlayer = null;
 
@@ -2143,6 +2181,8 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               isDub: _isDub,
                               hasDub: _hasDubAvailable,
                               onAudioChanged: _onAudioChanged,
+                              watchedEpisodes: _watchedEpisodes,
+                              seasonEpisodeCounts: _seasonEpisodeCounts,
                             ),
                           _buildMoreLikeThis(),
                         ],
@@ -2175,7 +2215,10 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         currentSeason: currentSeason,
                         currentEpisode: currentEpisode,
                         seasons: _seasons,
+                        watchedEpisodes: _watchedEpisodes,
+                        seasonEpisodeCounts: _seasonEpisodeCounts,
                         onEpisodeSelected: (season, episode) {
+                          _saveProgress(forceComplete: true); // Save progress of the current episode before switching
                           setState(() {
                             currentSeason = season;
                             currentEpisode = episode;
