@@ -16,6 +16,15 @@ Future<void> main() async {
   // Initialize window manager only on desktop platforms
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      fullScreen: true,
+      center: true,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+      await windowManager.setFullScreen(true);
+    });
   }
   MediaKit.ensureInitialized();
 
@@ -79,6 +88,8 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         primaryColor: Colors.redAccent,
         scaffoldBackgroundColor: const Color(0xFF141414), // Netflix deep dark configuration
+        focusColor: Colors.white30,
+        highlightColor: Colors.redAccent.withOpacity(0.2),
       ),
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         dragDevices: {

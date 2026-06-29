@@ -20,6 +20,7 @@ import '../models/subtitle_track.dart' as local_subtitle;
 import '../services/continue_watching_service.dart';
 import '../widgets/watchlist_icon_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/focusable_button.dart';
 
 // Helper to set fullscreen on both desktop and mobile
 Future<void> _setFullScreen(bool enable) async {
@@ -67,6 +68,26 @@ class PlayerScreen extends StatefulWidget {
 class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   // UI State
   bool _isDesktopFullscreen = false;
+  
+  // Play/Pause flash animation state
+  IconData? _flashIcon;
+  double _flashOpacity = 0.0;
+  Timer? _flashTimer;
+
+  void _showFlashIcon(IconData icon) {
+    _flashTimer?.cancel();
+    setState(() {
+      _flashIcon = icon;
+      _flashOpacity = 1.0;
+    });
+    _flashTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          _flashOpacity = 0.0;
+        });
+      }
+    });
+  }
   bool _showControls = true;
   bool _isFirstSubtitleLoad = true;
   InAppWebViewController? webViewController;
@@ -1346,9 +1367,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 const MaterialPositionIndicator(),
                 const Spacer(),
                 _buildSettingsMenu(),
-                IconButton(
-                  icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                  onPressed: () async {
+                FocusableButton(
+                  margin: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(8.0),
+                  child: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                  onTap: () async {
                     await _setFullScreen(!_isDesktopFullscreen);
                     if (mounted) {
                       setState(() {
@@ -1369,9 +1392,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 const MaterialPositionIndicator(),
                 const Spacer(),
                 _buildSettingsMenu(),
-                IconButton(
-                  icon: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
-                  onPressed: () async {
+                FocusableButton(
+                  margin: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(8.0),
+                  child: Icon(_isDesktopFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+                  onTap: () async {
                     await _setFullScreen(!_isDesktopFullscreen);
                     if (mounted) {
                       setState(() {
@@ -1385,10 +1410,73 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
             child: Center(
               child: AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Video(
-                  key: ValueKey(_videoController.hashCode),
-                  controller: _videoController!,
-                  controls: MaterialVideoControls,
+                child: Focus(
+                  autofocus: true,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      final key = event.logicalKey;
+                      if (key == LogicalKeyboardKey.select ||
+                          key == LogicalKeyboardKey.enter ||
+                          key == LogicalKeyboardKey.space ||
+                          key == LogicalKeyboardKey.numpadEnter ||
+                          key == LogicalKeyboardKey.mediaPlayPause ||
+                          key == LogicalKeyboardKey.mediaPlay ||
+                          key == LogicalKeyboardKey.mediaPause) {
+                        bool wasPlaying = _mediaPlayer?.state.playing ?? false;
+                        _mediaPlayer?.playOrPause();
+                        _showFlashIcon(wasPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled);
+                        return KeyEventResult.handled;
+                      }
+                      
+                      // Intercept Arrow keys to prevent media_kit_video from seeking, 
+                      // and instead force focus traversal for TV remotes.
+                      if (key == LogicalKeyboardKey.arrowLeft) {
+                        node.focusInDirection(TraversalDirection.left);
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowRight) {
+                        node.focusInDirection(TraversalDirection.right);
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowUp) {
+                        node.focusInDirection(TraversalDirection.up);
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowDown) {
+                        node.focusInDirection(TraversalDirection.down);
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Video(
+                        key: ValueKey(_videoController.hashCode),
+                        controller: _videoController!,
+                        controls: MaterialVideoControls,
+                      ),
+                      IgnorePointer(
+                        child: AnimatedOpacity(
+                          opacity: _flashOpacity,
+                          duration: const Duration(milliseconds: 300),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: const EdgeInsets.all(16),
+                            child: Icon(
+                              _flashIcon,
+                              color: Colors.white,
+                              size: 80,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1515,6 +1603,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     final streams = _playbackManager!.availableStreams;
+    final currentStream = _playbackManager!.currentStream;
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -1532,55 +1621,104 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
           ),
           SizedBox(width: 12),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
+            child: FocusableButton(
+              margin: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              defaultDecoration: BoxDecoration(
                 color: const Color.fromARGB(255, 14, 13, 13),
                 borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.transparent, width: 2),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<StreamInfo>(
-                  dropdownColor: const Color.fromARGB(255, 14, 13, 13),
-                  value: _playbackManager!.currentStream,
-                  isExpanded: true,
-                  icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-                  items: streams.map((streamInfo) {
-                    String displayName = streamInfo.providerName;
-                    
-                    if (streamInfo.hasSub && streamInfo.hasDub) {
-                      displayName += " (Sub + Dub)";
-                    } else if (streamInfo.hasDub) {
-                      displayName += " (Dub)";
-                    } else if (streamInfo.hasSub) {
-                      displayName += " (Sub)";
-                    }
+              focusedDecoration: BoxDecoration(
+                color: const Color.fromARGB(255, 14, 13, 13),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.redAccent, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.redAccent.withOpacity(0.6),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  )
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      currentStream?.providerName ?? 'Select Server',
+                      style: const TextStyle(color: Colors.white),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                ],
+              ),
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.grey[900],
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  builder: (context) {
+                    return SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Text(
+                              'Select Server',
+                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Flexible(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: streams.length,
+                              itemBuilder: (context, index) {
+                                final streamInfo = streams[index];
+                                String displayName = streamInfo.providerName;
+                                if (streamInfo.hasSub && streamInfo.hasDub) {
+                                  displayName += " (Sub + Dub)";
+                                } else if (streamInfo.hasDub) {
+                                  displayName += " (Dub)";
+                                } else if (streamInfo.hasSub) {
+                                  displayName += " (Sub)";
+                                }
 
-                    return DropdownMenuItem<StreamInfo>(
-                      value: streamInfo,
-                      child: Text(displayName, style: const TextStyle(color: Colors.white)),
+                                final isSelected = streamInfo == currentStream;
+                                return ListTile(
+                                  title: Text(
+                                    displayName,
+                                    style: TextStyle(color: isSelected ? Colors.redAccent : Colors.white),
+                                  ),
+                                  trailing: isSelected ? const Icon(Icons.check, color: Colors.redAccent) : null,
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    if (streamInfo != currentStream) {
+                                      setState(() {
+                                        if (_mediaPlayer != null) {
+                                          final pos = _mediaPlayer!.state.position;
+                                          if (pos > Duration.zero) _lastPlaybackPosition = pos;
+                                        }
+                                        _playbackManager!.setCurrentStream(streamInfo);
+                                        _isPlaying = true;
+                                        _preparePlaybackUrl();
+                                      });
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     );
-                  }).toList(),
-                  onChanged: (StreamInfo? newStream) {
-                    if (newStream != null && newStream != _playbackManager!.currentStream) {
-                      setState(() {
-                        if (_mediaPlayer != null) {
-                          final pos = _mediaPlayer!.state.position;
-                          if (pos > Duration.zero) _lastPlaybackPosition = pos;
-                        }
-                        // Set provider by exact name... Wait! If there are duplicates, name is NOT unique.
-                        // I will update PlaybackManager to support setCurrentStream(StreamInfo info).
-                        // Or I can just pass newStream.providerName and it selects the first one. 
-                        // But wait! PlaybackManager setCurrentProviderByName only finds the FIRST index!
-                        // Let's modify playback_manager to find by exact index if possible.
-                        _playbackManager!.setCurrentStream(newStream);
-                        _isPlaying = true;
-                        // DO NOT set webViewController = null here, otherwise InAppWebView won't reload
-                        _preparePlaybackUrl();
-                      });
-                    }
                   },
-                ),
-              ),
+                );
+              },
             ),
           ),
           const SizedBox(width: 12),
@@ -1591,7 +1729,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Sub Button
-                GestureDetector(
+                FocusableButton(
                   onTap: _hasSubAvailable
                       ? () {
                           if (_isDub) {
@@ -1599,7 +1737,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             _preparePlaybackUrl();
                           }
                         }
-                      : null,
+                      : () {},
                   child: Opacity(
                     opacity: _hasSubAvailable ? 1.0 : 0.5,
                     child: Container(
@@ -1607,14 +1745,13 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       decoration: BoxDecoration(
                         color: !_isDub ? Colors.redAccent : const Color(0xFF222222),
                         borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
-                        border: Border.all(color: !_isDub ? Colors.redAccent : Colors.white24),
                       ),
                       child: Text('SUB', style: TextStyle(color: !_isDub ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ),
                 ),
                 // Dub Button
-                GestureDetector(
+                FocusableButton(
                   onTap: _hasDubAvailable
                       ? () {
                           if (!_isDub) {
@@ -1622,7 +1759,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             _preparePlaybackUrl();
                           }
                         }
-                      : null,
+                      : () {},
                   child: Opacity(
                     opacity: _hasDubAvailable ? 1.0 : 0.5,
                     child: Container(
@@ -1632,7 +1769,6 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         borderRadius: (_hasSubAvailable && _hasDubAvailable)
                             ? const BorderRadius.horizontal(right: Radius.circular(8))
                             : BorderRadius.circular(8),
-                        border: Border.all(color: _isDub ? Colors.redAccent : Colors.white24),
                       ),
                       child: Text('DUB', style: TextStyle(color: _isDub ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
@@ -1642,10 +1778,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
             ),
           const SizedBox(width: 8),
           _buildSettingsMenu(),
-          IconButton(
-            icon: const Icon(Icons.fullscreen, color: Colors.white70),
-            tooltip: 'Toggle Fullscreen',
-            onPressed: () async {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.fullscreen, color: Colors.white70),
+            onTap: () async {
               FocusManager.instance.primaryFocus?.unfocus();
               bool isFull = await windowManager.isFullScreen();
               await windowManager.setFullScreen(!isFull);
@@ -1689,8 +1826,10 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 showText: true,
                 text: 'SAVE',
               ),
-              IconButton(
-                icon: Column(
+              FocusableButton(
+                margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
                   children: [
                     Icon(Icons.thumb_up_alt_outlined, color: Colors.white),
                     Text(
@@ -1699,7 +1838,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     ),
                   ],
                 ),
-                onPressed: () {},
+                onTap: () {},
               ),
             ],
           ),
@@ -1987,9 +2126,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Widget _buildSettingsMenu() {
-    return IconButton(
-      icon: const Icon(Icons.settings, color: Colors.white),
-      onPressed: () {
+    return FocusableButton(
+      margin: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.all(8.0),
+      child: const Icon(Icons.settings, color: Colors.white),
+      onTap: () {
         showModalBottomSheet(
           context: context,
           backgroundColor: Colors.grey[900],
@@ -2122,6 +2263,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
               ),
               backgroundColor: Colors.black,
               iconTheme: const IconThemeData(color: Colors.white),
+              leading: FocusableButton(
+                padding: const EdgeInsets.all(8.0),
+                child: const Icon(Icons.arrow_back, color: Colors.white),
+                onTap: () => Navigator.pop(context),
+              ),
               actions: [
                 _buildSettingsMenu(),
               ],
@@ -2144,13 +2290,14 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         color: Colors.black54,
                         shape: BoxShape.circle,
                       ),
-                      child: IconButton(
-                        icon: const Icon(
+                      child: FocusableButton(
+                        padding: const EdgeInsets.all(8.0),
+                        child: const Icon(
                           Icons.fullscreen_exit,
                           color: Colors.white,
                           size: 28,
                         ),
-                        onPressed: () async {
+                        onTap: () async {
                           await windowManager.setFullScreen(false);
                           if (mounted) {
                             setState(() {
@@ -2260,6 +2407,55 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   ],
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _FocusableButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final BoxDecoration defaultDecoration;
+  final BoxDecoration focusedDecoration;
+  final EdgeInsetsGeometry margin;
+  final EdgeInsetsGeometry padding;
+
+  const _FocusableButton({
+    Key? key,
+    required this.child,
+    required this.onTap,
+    required this.defaultDecoration,
+    required this.focusedDecoration,
+    this.margin = EdgeInsets.zero,
+    this.padding = EdgeInsets.zero,
+  }) : super(key: key);
+
+  @override
+  State<_FocusableButton> createState() => _FocusableButtonState();
+}
+
+class _FocusableButtonState extends State<_FocusableButton> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: widget.margin,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          focusColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          onFocusChange: (focused) => setState(() => _isFocused = focused),
+          child: Container(
+            padding: widget.padding,
+            decoration: _isFocused ? widget.focusedDecoration : widget.defaultDecoration,
+            child: widget.child,
+          ),
+        ),
       ),
     );
   }

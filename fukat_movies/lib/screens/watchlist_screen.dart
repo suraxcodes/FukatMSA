@@ -5,6 +5,7 @@ import '../services/manga_watchlist_service.dart';
 import 'player_screen.dart';
 import 'manga_details_screen.dart';
 import '../widgets/watchlist_icon_button.dart';
+import '../widgets/focusable_button.dart';
 import '../services/supabase_auth_service.dart';
 import '../monetization/services/ad_service.dart';
 
@@ -17,6 +18,11 @@ class WatchlistScreen extends StatelessWidget {
         title: Text('My Watchlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.black,
         iconTheme: IconThemeData(color: Colors.white),
+        leading: FocusableButton(
+          padding: const EdgeInsets.all(8.0),
+          child: const Icon(Icons.arrow_back, color: Colors.white),
+          onTap: () => Navigator.pop(context),
+        ),
       ),
         body: FutureBuilder(
           future: Future.wait([
@@ -166,7 +172,7 @@ class WatchlistScreen extends StatelessWidget {
                             final title = manga['title']?['romaji'] ?? manga['title']?['english'] ?? 'Unknown';
                             final coverUrl = manga['coverImage']?['extraLarge'] ?? manga['coverImage']?['large'] ?? manga['coverImage']?['medium'];
 
-                            return GestureDetector(
+                            return FocusableButton(
                               onTap: () {
                                 Navigator.push(
                                   context,
@@ -175,9 +181,9 @@ class WatchlistScreen extends StatelessWidget {
                                   ),
                                 );
                               },
-                              child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: SizedBox(
                                 width: 150,
-                                margin: const EdgeInsets.symmetric(horizontal: 8.0),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Stack(
@@ -247,7 +253,7 @@ class WatchlistScreen extends StatelessWidget {
           final tmdbId = item['tmdbId'].toString();
           final isMovie = item['isMovie'];
 
-          return GestureDetector(
+          return FocusableButton(
             onTap: () async {
               if (!SupabaseAuthService.isPremium) {
                 await MockAdService().showInterstitialAd(context);
@@ -264,9 +270,9 @@ class WatchlistScreen extends StatelessWidget {
                 ),
               );
             },
-            child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: SizedBox(
               width: 150,
-              margin: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Stack(
                 children: [
                   ClipRRect(

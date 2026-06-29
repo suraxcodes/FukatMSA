@@ -3,6 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/custom_repo_service.dart';
 import '../services/supabase_auth_service.dart';
 import '../monetization/screens/premium_screen.dart';
+import '../widgets/focusable_button.dart';
 import 'home_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -141,10 +142,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
-                IconButton(
-                  icon: const Icon(Icons.logout, color: Colors.white),
-                  onPressed: _signOut,
-                  tooltip: 'Sign Out',
+                FocusableButton(
+                  padding: const EdgeInsets.all(8.0),
+                  child: const Icon(Icons.logout, color: Colors.white),
+                  onTap: _signOut,
                 ),
               ],
             ),

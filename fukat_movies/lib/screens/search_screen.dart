@@ -12,6 +12,7 @@ import '../monetization/services/ad_service.dart';
 import '../services/manga_service.dart';
 import 'manga_details_screen.dart';
 import '../widgets/manga_watchlist_icon_button.dart';
+import '../widgets/focusable_button.dart';
 
 class SearchScreen extends StatefulWidget {
   @override
@@ -20,6 +21,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   List<dynamic> _movieResults = [];
   List<dynamic> _seriesResults = [];
   List<dynamic> _animeResults = [];
@@ -86,6 +88,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -167,10 +170,7 @@ class _SearchScreenState extends State<SearchScreen> {
               final mediaType = item['media_type'];
               final isMovie = mediaType == 'movie' || item['title'] != null;
 
-              return Container(
-                width: 120,
-                  margin: EdgeInsets.only(right: 12.0),
-                  child: GestureDetector(
+              return FocusableButton(
                 onTap: () async {
                   _saveOpenedItem(item as Map<String, dynamic>);
                   if (!SupabaseAuthService.isPremium) {
@@ -188,7 +188,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 );
               },
-              child: Column(
+              margin: const EdgeInsets.only(right: 12.0),
+              child: SizedBox(
+                width: 120,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
@@ -263,10 +266,7 @@ class _SearchScreenState extends State<SearchScreen> {
               final coverImage = item['coverImage']?['large'];
               final titleText = item['title']?['english'] ?? item['title']?['romaji'] ?? 'Unknown Manga';
 
-              return Container(
-                width: 120,
-                margin: const EdgeInsets.only(right: 12.0),
-                child: GestureDetector(
+              return FocusableButton(
                   onTap: () {
                     Navigator.push(
                       context,
@@ -275,7 +275,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                     );
                   },
-                  child: Column(
+                  margin: const EdgeInsets.only(right: 12.0),
+                  child: SizedBox(
+                    width: 120,
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
@@ -397,13 +400,29 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        if (!_searchFocusNode.hasFocus) {
+          _searchFocusNode.requestFocus();
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       backgroundColor: Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: IconThemeData(color: Colors.white),
+        leading: FocusableButton(
+          margin: const EdgeInsets.all(8.0),
+          onTap: () => Navigator.of(context).pop(),
+          child: const Icon(Icons.arrow_back, color: Colors.white),
+        ),
         title: TextField(
           controller: _searchController,
+          focusNode: _searchFocusNode,
           autofocus: true,
           style: TextStyle(color: Colors.white),
           decoration: InputDecoration(
@@ -415,12 +434,14 @@ class _SearchScreenState extends State<SearchScreen> {
           onChanged: _onSearchChanged,
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.clear),
-            onPressed: () {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            onTap: () {
               _searchController.clear();
               _onSearchChanged('');
             },
+            child: const Icon(Icons.clear, color: Colors.white),
           )
         ],
       ),
@@ -445,6 +466,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     SizedBox(height: 20),
                   ],
                 ),
+      ),
     );
   }
 }

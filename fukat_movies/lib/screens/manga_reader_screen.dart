@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import '../services/manga_service.dart';
+import '../widgets/focusable_button.dart';
 
 class MangaReaderScreen extends StatefulWidget {
   final String chapterId;
@@ -81,9 +82,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.fullscreen),
-            onPressed: _toggleFullscreen,
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.fullscreen, color: Colors.white),
+            onTap: _toggleFullscreen,
           ),
         ],
       ),
@@ -158,9 +161,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                                   color: Colors.black54,
                                   shape: BoxShape.circle,
                                 ),
-                                child: IconButton(
-                                  icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
-                                  onPressed: _toggleFullscreen,
+                                child: FocusableButton(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                                  onTap: _toggleFullscreen,
                                 ),
                               ),
                             ]

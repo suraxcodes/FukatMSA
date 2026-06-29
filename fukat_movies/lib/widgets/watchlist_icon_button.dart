@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../services/watchlist_service.dart';
+import 'focusable_button.dart';
 
 class WatchlistIconButton extends StatefulWidget {
   final String tmdbId;
@@ -81,9 +82,27 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
           );
         }
 
-        return IconButton(
-          icon: iconWidget,
-          onPressed: _toggleWatchlist,
+        return FocusableButton(
+          onTap: _toggleWatchlist,
+          defaultDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black87,
+            border: Border.all(color: Colors.transparent, width: 2),
+          ),
+          focusedDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black87,
+            border: Border.all(color: Colors.redAccent, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.redAccent.withOpacity(0.6),
+                blurRadius: 8,
+                spreadRadius: 2,
+              )
+            ],
+          ),
+          padding: const EdgeInsets.all(8.0),
+          child: iconWidget,
         );
       },
     );

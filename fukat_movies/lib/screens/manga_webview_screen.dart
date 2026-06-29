@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../widgets/focusable_button.dart';
 
 class MangaWebviewScreen extends StatefulWidget {
   final String url;
@@ -24,9 +25,11 @@ class _MangaWebviewScreenState extends State<MangaWebviewScreen> {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.refresh, color: Colors.white),
+            onTap: () {
               webViewController?.reload();
             },
           ),

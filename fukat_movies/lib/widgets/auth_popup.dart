@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/supabase_auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'focusable_button.dart';
 
 class AuthPopup extends StatefulWidget {
   @override
@@ -276,9 +277,10 @@ class _AuthPopupState extends State<AuthPopup> {
           Positioned(
             top: 8,
             right: 8,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
+            child: FocusableButton(
+              padding: const EdgeInsets.all(8.0),
+              child: const Icon(Icons.close, color: Colors.white),
+              onTap: () => Navigator.pop(context),
             ),
           ),
         ],

@@ -8,6 +8,7 @@ import 'watchlist_screen.dart';
 import 'settings_screen.dart';
 import '../services/supabase_sync_service.dart';
 import '../services/supabase_auth_service.dart';
+import '../widgets/focusable_button.dart';
 import '../monetization/services/ad_service.dart';
 import '../widgets/auth_popup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,6 +17,8 @@ import '../services/manga_service.dart';
 import 'manga_details_screen.dart';
 import '../widgets/manga_watchlist_icon_button.dart';
 import 'dart:io' show Platform;
+import 'series_detail_screen.dart';
+
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -109,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final titleText = item['title'] ?? item['name'];
               final tmdbId = item['id'].toString();
 
-              return GestureDetector(
+              return FocusableButton(
                 onTap: () async {
                   if (!SupabaseAuthService.isPremium) {
                     await MockAdService().showInterstitialAd(context);
@@ -126,9 +129,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 },
-                child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: SizedBox(
                   width: 150,
-                  margin: EdgeInsets.symmetric(horizontal: 8.0),
                   child: Column(
                     children: [
                       Stack(
@@ -216,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final coverImage = item['coverImage']?['large'];
               final titleText = item['title']?['english'] ?? item['title']?['romaji'] ?? 'Unknown Manga';
 
-              return GestureDetector(
+              return FocusableButton(
                 onTap: () {
                   Navigator.push(
                     context,
@@ -225,9 +228,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 },
-                child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: SizedBox(
                   width: 150,
-                  margin: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: Column(
                     children: [
                       Stack(
@@ -296,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   final tmdbId = item['tmdbId'].toString();
                   final isMovie = item['isMovie'];
                   final posterPath = item['posterPath'];
-                  return GestureDetector(
+                  return FocusableButton(
                     onTap: () async {
                       if (!SupabaseAuthService.isPremium) {
                         await MockAdService().showInterstitialAd(context);
@@ -313,9 +316,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       );
                     },
-                    child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: SizedBox(
                       width: 150,
-                      margin: EdgeInsets.symmetric(horizontal: 8.0),
                       child: Column(
                         children: [
                           Stack(
@@ -394,27 +397,33 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.black,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(Icons.bookmark, color: Colors.white),
-            onPressed: () {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.bookmark, color: Colors.white),
+            onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => WatchlistScreen()),
               );
             },
           ),
-          IconButton(
-            icon: Icon(Icons.search, color: Colors.white),
-            onPressed: () {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.search, color: Colors.white),
+            onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => SearchScreen()),
               );
             },
           ),
-          IconButton(
-            icon: Icon(Icons.settings, color: Colors.white),
-            onPressed: () {
+          FocusableButton(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            child: const Icon(Icons.settings, color: Colors.white),
+            onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
@@ -453,15 +462,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 );
               }
-              return IconButton(
-                icon: const Icon(Icons.login, color: Colors.redAccent),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AuthPopup(),
-                  );
-                },
-              );
+                return FocusableButton(
+                  margin: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(8.0),
+                  child: const Icon(Icons.login, color: Colors.white),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AuthPopup(),
+                    );
+                  },
+                );
             },
           ),
         ],

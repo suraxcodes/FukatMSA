@@ -125,29 +125,34 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                       bool isSeasonWatched = totalCount > 0 && watchedCount >= totalCount;
                       print("Season: $season, Watched: $watchedCount, Total: $totalCount, IsWatched: $isSeasonWatched");
                       
-                      return GestureDetector(
+                      final BoxDecoration defaultDec = BoxDecoration(
+                        color: isSelected ? const Color(0xFF8A2BE2) : (isSeasonWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: isSelected ? [
+                          BoxShadow(color: const Color(0xFF8A2BE2).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
+                        ] : null,
+                      );
+                      
+                      final BoxDecoration focusedDec = defaultDec.copyWith(
+                        border: Border.all(color: Colors.white, width: 2),
+                      );
+
+                      return _FocusableButton(
+                        margin: const EdgeInsets.only(right: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        defaultDecoration: defaultDec,
+                        focusedDecoration: focusedDec,
                         onTap: () {
                           if (!isSelected) {
                             setState(() => _selectedSeason = season);
                             _loadEpisodesForActiveSeason(season);
                           }
                         },
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF8A2BE2) : (isSeasonWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: isSelected ? [
-                              BoxShadow(color: const Color(0xFF8A2BE2).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
-                            ] : null,
-                          ),
-                          child: Text(
-                            'S$season',
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : (isSeasonWatched ? Colors.white24 : Colors.white),
-                              fontWeight: FontWeight.bold,
-                            ),
+                        child: Text(
+                          'S$season',
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : (isSeasonWatched ? Colors.white24 : Colors.white),
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       );
@@ -180,20 +185,27 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
                     final isPlaying = (ep == widget.currentEpisode && _selectedSeason == widget.currentSeason);
                     final isWatched = widget.watchedEpisodes.contains("${_selectedSeason}_$ep");
                     
-                    return GestureDetector(
+                    final BoxDecoration defaultDec = BoxDecoration(
+                      color: isPlaying ? Colors.cyan : (isWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: isPlaying ? [
+                          BoxShadow(color: Colors.cyan.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
+                        ] : null,
+                    );
+                    
+                    final BoxDecoration focusedDec = defaultDec.copyWith(
+                      border: Border.all(color: Colors.white, width: 2),
+                    );
+
+                    return _FocusableButton(
+                      margin: const EdgeInsets.only(right: 12),
+                      defaultDecoration: defaultDec,
+                      focusedDecoration: focusedDec,
                       onTap: () => widget.onEpisodeSelected(_selectedSeason, ep),
                       child: Container(
-                        margin: const EdgeInsets.only(right: 12),
                         width: 50,
                         height: 50,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: isPlaying ? Colors.cyan : (isWatched ? const Color(0xFF111111) : const Color(0xFF222222)),
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: isPlaying ? [
-                              BoxShadow(color: Colors.cyan.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
-                            ] : null,
-                        ),
                         child: Text(
                           ep,
                           style: TextStyle(
@@ -246,3 +258,53 @@ class _EpisodeSidePanelState extends State<EpisodeSidePanel> {
     );
   }
 }
+
+class _FocusableButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final BoxDecoration defaultDecoration;
+  final BoxDecoration focusedDecoration;
+  final EdgeInsetsGeometry margin;
+  final EdgeInsetsGeometry padding;
+
+  const _FocusableButton({
+    Key? key,
+    required this.child,
+    required this.onTap,
+    required this.defaultDecoration,
+    required this.focusedDecoration,
+    this.margin = EdgeInsets.zero,
+    this.padding = EdgeInsets.zero,
+  }) : super(key: key);
+
+  @override
+  State<_FocusableButton> createState() => _FocusableButtonState();
+}
+
+class _FocusableButtonState extends State<_FocusableButton> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: widget.margin,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          focusColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          onFocusChange: (focused) => setState(() => _isFocused = focused),
+          child: Container(
+            padding: widget.padding,
+            decoration: _isFocused ? widget.focusedDecoration : widget.defaultDecoration,
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
