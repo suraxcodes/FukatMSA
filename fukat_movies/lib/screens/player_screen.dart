@@ -303,7 +303,14 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     Map<String, dynamic> targetStream;
-    if (speed == NetworkSpeed.fast) {
+    
+    // First, try to find an 'Auto' quality stream which uses adaptive bitrate
+    final int autoIndex = providerStreams.indexWhere(
+        (s) => s['quality'].toString().toLowerCase().contains('auto'));
+        
+    if (autoIndex != -1) {
+      targetStream = providerStreams[autoIndex];
+    } else if (speed == NetworkSpeed.fast) {
       targetStream = providerStreams.first; // Usually highest
     } else if (speed == NetworkSpeed.moderate) {
       int midIndex = providerStreams.length ~/ 2;
@@ -618,7 +625,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     _mediaPlayer = mk.Player(
       configuration: mk.PlayerConfiguration(
-        bufferSize: 1024 * 1024 * 32, // 32MB buffer for fast seeking
+        bufferSize: 1024 * 1024 * 128, // 128MB buffer to reduce buffering
         logLevel: mk.MPVLogLevel.debug,
       ),
     );
@@ -638,7 +645,7 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _mediaPlayer!.stream.buffering.listen((isBuffering) {
       if (isBuffering) {
         _bufferingTimer?.cancel();
-        _bufferingTimer = Timer(const Duration(seconds: 8), () {
+        _bufferingTimer = Timer(const Duration(seconds: 15), () {
           if (mounted &&
               _mediaPlayer != null &&
               _mediaPlayer!.state.buffering) {
