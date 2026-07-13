@@ -18,6 +18,7 @@ import 'manga_details_screen.dart';
 import '../widgets/manga_watchlist_icon_button.dart';
 import 'dart:io' show Platform;
 import 'series_detail_screen.dart';
+import '../services/updater/update_service.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -38,6 +39,11 @@ class _HomeScreenState extends State<HomeScreen> {
     SupabaseSyncService.pullContinueWatching();
     SupabaseSyncService.pullWatchlist();
     SupabaseSyncService.pullSearchHistory();
+    
+    // Check for updates on startup
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateService.checkForUpdates(context);
+    });
   }
 
   Future<void> _fetchData() async {

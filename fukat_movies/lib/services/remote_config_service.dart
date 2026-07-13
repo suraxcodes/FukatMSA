@@ -12,6 +12,8 @@ class RemoteConfigService {
   static List<dynamic> _activeProviders = [];
 
   static List<dynamic> get activeProviders => _activeProviders;
+  
+  static Map<String, String> remoteEnv = {};
 
   // Hidden Global Remote URL: 
   // Stored in your assets/.env file so it never goes to GitHub!
@@ -25,6 +27,12 @@ class RemoteConfigService {
           final res = await http.get(Uri.parse(_globalRemoteUrl)).timeout(const Duration(seconds: 5));
           if (res.statusCode == 200) {
             final data = json.decode(res.body);
+            
+            if (data['env'] != null) {
+              remoteEnv = Map<String, String>.from(data['env']);
+              print("Loaded ${remoteEnv.length} environment variables from remote config.");
+            }
+
             if (data['active_providers'] != null) {
               var globalProviders = data['active_providers'] as List<dynamic>;
               if (Platform.isWindows) {

@@ -10,7 +10,27 @@ import 'services/remote_config_service.dart';
 import 'services/supabase_auth_service.dart';
 import 'screens/home_screen.dart';
 
-Future<void> main() async {
+import 'package:http/http.dart' as http;
+import 'package:cronet_http/cronet_http.dart';
+import 'package:cupertino_http/cupertino_http.dart';
+
+void main() {
+  if (Platform.isAndroid) {
+    http.runWithClient(
+      _mainAsync,
+      () => CronetClient.defaultCronetEngine(),
+    );
+  } else if (Platform.isIOS || Platform.isMacOS) {
+    http.runWithClient(
+      _mainAsync,
+      () => CupertinoClient.defaultSessionConfiguration(),
+    );
+  } else {
+    _mainAsync();
+  }
+}
+
+Future<void> _mainAsync() async {
   // 1. Ensure structural widget engine bindings are completely ready
   WidgetsFlutterBinding.ensureInitialized();
   // Initialize window manager only on desktop platforms
@@ -34,19 +54,28 @@ Future<void> main() async {
     // 2. Load environmental variable configurations from assets folder
     await dotenv.load(fileName: "assets/.env");
 
-    // 3. Initialize Supabase Client
-    final supabaseUrl = dotenv.env['SUPABASE_URL'];
-    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+    // 3. Initialize Hive core storage paths FIRST
+    // Must be done before RemoteConfigService because it uses Hive
+    await Hive.initFlutter();
+
+    // 4. Fetch server-side network values before initializing Supabase
+    // Wrapped in a sub-try block so network issues don't crash local database access
+    try {
+      await RemoteConfigService.initializeConfig();
+    } catch (networkError) {
+      print("⚠️ Remote Config failed to load (Using cached/default providers): $networkError");
+    }
+
+    // 5. Initialize Supabase Client
+    final supabaseUrl = RemoteConfigService.remoteEnv['SUPABASE_URL'] ?? dotenv.env['SUPABASE_URL'];
+    final supabaseAnonKey = RemoteConfigService.remoteEnv['SUPABASE_ANON_KEY'] ?? dotenv.env['SUPABASE_ANON_KEY'];
     if (supabaseUrl != null && supabaseAnonKey != null && supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
       await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     } else {
-      throw Exception('Supabase credentials are empty or missing in .env file.');
+      throw Exception('Supabase credentials are empty or missing in remote config and .env file.');
     }
 
-    // 4. Initialize Hive core storage paths
-    await Hive.initFlutter();
-
-    // 5. HARD BLOCK: Concurrently open all local database box files on disk storage.
+    // 6. HARD BLOCK: Concurrently open all local database box files on disk storage.
     print("📦 Opening critical local databases...");
     await Future.wait([
       Hive.openBox('watchlistBox'),
@@ -54,14 +83,6 @@ Future<void> main() async {
       Hive.openBox('customRepoBox'),
     ]);
     print("📦 Databases active and available.");
-
-    // 6. Fetch server-side network values before the home screen mounts
-    // Wrapped in a sub-try block so network issues don't crash local database access
-    try {
-      await RemoteConfigService.initializeConfig();
-    } catch (networkError) {
-      print("⚠️ Remote Config failed to load (Using cached/default providers): $networkError");
-    }
 
     initializationSuccess = true;
 
