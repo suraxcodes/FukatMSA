@@ -1568,7 +1568,11 @@ class PlayerScreenState extends State<PlayerScreen> with WindowListener {
             }
             return NavigationActionPolicy.ALLOW;
           },
-          onLoadStop: (controller, url) async {
+        onGeolocationPermissionsShowPrompt: (controller, origin) async {
+          print("Auto-denying geolocation request from $origin");
+          return GeolocationPermissionShowPromptResponse(origin: origin, allow: false, retain: true);
+        },
+        onLoadStop: (controller, url) async {
             if (url != null) {
               final script = await AdBlockService.getUiCleanerScript(
                 url.toString(),

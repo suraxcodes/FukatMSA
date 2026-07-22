@@ -57,21 +57,36 @@ class PlaybackManager {
   List<StreamInfo> get availableStreams => List.unmodifiable(_availableStreams);
   StreamInfo? get currentStream =>
       (_currentStreamIdx >= 0 && _currentStreamIdx < _availableStreams.length)
-          ? _availableStreams[_currentStreamIdx]
-          : null;
+      ? _availableStreams[_currentStreamIdx]
+      : null;
 
   bool _currentIsDub = false;
 
   /// Initialise providers list and start batch search.
-  Future<void> initAndSearch({bool isAnime = false, bool isDub = false, int season = 1, int episode = 1}) async {
+  Future<void> initAndSearch({
+    bool isAnime = false,
+    bool isDub = false,
+    int season = 1,
+    int episode = 1,
+  }) async {
     _currentIsDub = isDub;
     _detailedLogs.clear();
-    _allProviders = List<Map<String, dynamic>>.from(RemoteConfigService.activeProviders);
-    
+    _allProviders = List<Map<String, dynamic>>.from(
+      RemoteConfigService.activeProviders,
+    );
+
     if (isAnime) {
-      _allProviders = _allProviders.where((p) => p['engine'] == 'native_miruro' || p['engine'] == 'native_flyx').toList();
+      _allProviders = _allProviders
+          .where(
+            (p) =>
+                p['engine'] == 'native_miruro' ||
+                p['engine'] == 'native_stremio',
+          )
+          .toList();
     } else {
-      _allProviders = _allProviders.where((p) => p['engine'] != 'native_miruro').toList();
+      _allProviders = _allProviders
+          .where((p) => p['engine'] != 'native_miruro')
+          .toList();
     }
 
     // Prioritize native engines so they are searched first!
@@ -86,7 +101,9 @@ class PlaybackManager {
     const batchSize = 3;
     for (int i = 0; i < _allProviders.length; i += batchSize) {
       final batch = _allProviders.sublist(
-          i, (i + batchSize).clamp(0, _allProviders.length));
+        i,
+        (i + batchSize).clamp(0, _allProviders.length),
+      );
       await _searchBatch(batch, season, episode);
       // Removed the break statement here so it continues searching remaining batches in the background
       // This populates the entire dropdown list!
@@ -95,10 +112,13 @@ class PlaybackManager {
     // --- USER REQUESTED DEBUG LOGS ---
     int loaded = _allProviders.length;
     // A single provider can return multiple streams (e.g. 1080p, 720p), so count unique providers
-    int successful = _availableStreams.map((s) => s.providerName).toSet().length;
+    int successful = _availableStreams
+        .map((s) => s.providerName)
+        .toSet()
+        .length;
     int failed = loaded - successful;
     int dropdownCount = _availableStreams.length;
-    
+
     print("\n=================== PROVIDER DEBUG LOG ===================");
     print("Loaded Providers: $loaded");
     print("Successful Providers: $successful");
@@ -112,27 +132,39 @@ class PlaybackManager {
   }
 
   /// Search a batch of providers concurrently.
-  Future<void> _searchBatch(List<Map<String, dynamic>> batch, int season, int episode) async {
+  Future<void> _searchBatch(
+    List<Map<String, dynamic>> batch,
+    int season,
+    int episode,
+  ) async {
     final futures = batch.map((provider) async {
       final pName = provider['name'] ?? provider['engine'] ?? 'Unknown Server';
       final playbackData = await _buildPlaybackUrl(provider, season, episode);
       if (playbackData != null && playbackData['url'] != null) {
-        _detailedLogs.add("✅ [$pName] SUCCESS (200 OK) - Found ${playbackData['streams']?.length ?? 1} stream(s)");
+        _detailedLogs.add(
+          "✅ [$pName] SUCCESS (200 OK) - Found ${playbackData['streams']?.length ?? 1} stream(s)",
+        );
         final qualities = (playbackData['streams'] as List<dynamic>? ?? [])
-            .map((s) => {
-                  'quality': s['quality'],
-                  'url': s['url'],
-                  'headers': s['headers'] ?? {},
-                })
+            .map(
+              (s) => {
+                'quality': s['quality'],
+                'url': s['url'],
+                'headers': s['headers'] ?? {},
+              },
+            )
             .toList();
         final subtitles = (playbackData['subtitles'] as List<dynamic>? ?? [])
-            .map<Map<String, String>>((sub) => {
-                  'lang': sub['lang'] as String,
-                  'url': sub['url'] as String,
-                })
+            .map<Map<String, String>>(
+              (sub) => {
+                'lang': sub['lang'] as String,
+                'url': sub['url'] as String,
+              },
+            )
             .toList();
-        print("PLAYBACK MANAGER: provider engine is ${provider['engine']}"); final info = StreamInfo(
-          providerName: provider['name'] ?? provider['engine'] ?? 'Unknown Server',
+        print("PLAYBACK MANAGER: provider engine is ${provider['engine']}");
+        final info = StreamInfo(
+          providerName:
+              provider['name'] ?? provider['engine'] ?? 'Unknown Server',
           engine: provider['engine'] ?? 'webview',
           url: playbackData['url'] as String,
           headers: (playbackData['headers'] as Map?)?.cast<String, String>(),
@@ -156,18 +188,12 @@ class PlaybackManager {
 
   /// Mirrors PlayerScreen._buildPlaybackUrl for native providers.
   Future<Map<String, dynamic>?> _buildPlaybackUrl(
-      Map<String, dynamic> provider, int season, int episode) async {
+    Map<String, dynamic> provider,
+    int season,
+    int episode,
+  ) async {
     final String engine = provider['engine'] ?? 'webview';
     if (engine.startsWith('native_') && engine != 'native_extractor') {
-      if (engine == 'native_omss' && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("OMSS Super Aggregator is searching 17 providers... This may take up to 30 seconds, please wait!"),
-            duration: Duration(seconds: 5),
-            backgroundColor: Colors.blueGrey,
-          ),
-        );
-      }
       return await StreamingAggregatorService.getNativeStreamingUrl(
         title: title,
         engine: engine,
@@ -184,8 +210,7 @@ class PlaybackManager {
     final String baseUrl = isMovie ? provider['movie_url'] : provider['tv_url'];
     String targetId = tmdbId;
     if (idType == 'imdb') {
-      final imdbId = await TmdbService.getImdbId(
-          int.parse(tmdbId), isMovie);
+      final imdbId = await TmdbService.getImdbId(int.parse(tmdbId), isMovie);
       if (imdbId != null && imdbId.isNotEmpty) targetId = imdbId;
     }
     // Very simple handling – only slash style needed for current UI.

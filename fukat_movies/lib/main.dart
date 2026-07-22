@@ -16,15 +16,7 @@ Future<void> main() async {
   // Initialize window manager only on desktop platforms
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await windowManager.ensureInitialized();
-    WindowOptions windowOptions = const WindowOptions(
-      fullScreen: true,
-      center: true,
-    );
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-      await windowManager.setFullScreen(true);
-    });
+
   }
   MediaKit.ensureInitialized();
 

@@ -166,15 +166,15 @@ class TmdbService {
     }
   }
 
-  // Get Trending Movies (weekly)
+  // Get Trending Movies (daily)
   static Future<List<dynamic>> getTrendingMovies() async {
-    final data = await _fetchAndDecode('/trending/movie/week');
+    final data = await _fetchAndDecode('/trending/movie/day');
     return (data['results'] as List<dynamic>?) ?? [];
   }
 
-  // Get Trending TV Shows (weekly)
+  // Get Trending TV Shows (daily)
   static Future<List<dynamic>> getTrendingTvShows() async {
-    final data = await _fetchAndDecode('/trending/tv/week');
+    final data = await _fetchAndDecode('/trending/tv/day');
     return (data['results'] as List<dynamic>?) ?? [];
   }
 
