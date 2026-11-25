@@ -13,23 +13,72 @@ class AdBlockService {
 
   // Fallback static data (used when remote fetch fails)
   static const Set<String> _fallbackDomains = {
-    'doubleclick.net', 'googlesyndication.com', 'adnxs.com',
-    'popads.net', 'popcash.net', 'exoclick.com', 'trafficjunky.net',
-    'ajio.com', 'myntra.com', 'flipkart.com', 'amazon.in',
-    'adsterra', 'propellerads', 'infolinks', 'revenuehits',
-    'awin1.com', 'admitad.com', 'cuelinks.com', 'vcommission.com',
-    'qxbroker.com', 'dafapromo.com', 'binomo.com',
-    'olymptrade.com', '1xbet.com', 'bet365.com', 'melbet.com', 'parimatch.com',
-    'iqoption.com', 'betway.com', '888casino.com', 'draftkings.com',
-    'fanduel.com', 'betmgm.com', 'unibet.com', 'bovada.lv', 'betonline.ag',
-    'masonerthoria.shop', 'videouv.online', 'jape.hoosgowdemodedimouts.cyou',
+    'doubleclick.net',
+    'googlesyndication.com',
+    'adnxs.com',
+    'popads.net',
+    'popcash.net',
+    'exoclick.com',
+    'trafficjunky.net',
+    'ajio.com',
+    'myntra.com',
+    'flipkart.com',
+    'amazon.in',
+    'adsterra',
+    'propellerads',
+    'infolinks',
+    'revenuehits',
+    'awin1.com',
+    'admitad.com',
+    'cuelinks.com',
+    'vcommission.com',
+    'qxbroker.com',
+    'dafapromo.com',
+    'binomo.com',
+    'olymptrade.com',
+    '1xbet.com',
+    'bet365.com',
+    'melbet.com',
+    'parimatch.com',
+    'iqoption.com',
+    'betway.com',
+    '888casino.com',
+    'draftkings.com',
+    'fanduel.com',
+    'betmgm.com',
+    'unibet.com',
+    'bovada.lv',
+    'betonline.ag',
+    'masonerthoria.shop',
+    'videouv.online',
+    'jape.hoosgowdemodedimouts.cyou',
   };
 
   static const Map<String, List<String>> _fallbackSelectors = {
     'player.videasy.net': ['.logo', '.header-menu', '.footer', '.share-btn'],
-    'vidsrcme.ru': ['#logo', '.top-navigation', '.server-sidebar', '.ads-overlay', '.ad', '.ads', '.popup', '#ad-banner', '.banner', '.advertisement', '.video-wrapper .ads', '.player-overlay'],
+    'vidsrcme.ru': [
+      '#logo',
+      '.top-navigation',
+      '.server-sidebar',
+      '.ads-overlay',
+      '.ad',
+      '.ads',
+      '.popup',
+      '#ad-banner',
+      '.banner',
+      '.advertisement',
+      '.video-wrapper .ads',
+      '.player-overlay',
+    ],
     'www.2embed.cc': ['#logo-container', '.margin-ads', '.player-banner'],
-    'www.nontongo.win': ['.logo-text', '.header-wrapper', '.bottom-nav', '#notice-box', '.no-stream', '.error-message'],
+    'www.nontongo.win': [
+      '.logo-text',
+      '.header-wrapper',
+      '.bottom-nav',
+      '#notice-box',
+      '.no-stream',
+      '.error-message',
+    ],
   };
 
   // Load config from remote or cache, fallback to static constants.
@@ -53,7 +102,10 @@ class AdBlockService {
       _cachedConfig = AdBlockConfig.fromJson(json);
       return _cachedConfig!;
     }
-    _cachedConfig = AdBlockConfig(domains: _fallbackDomains, selectors: _fallbackSelectors);
+    _cachedConfig = AdBlockConfig(
+      domains: _fallbackDomains,
+      selectors: _fallbackSelectors,
+    );
     return _cachedConfig!;
   }
 
@@ -61,14 +113,14 @@ class AdBlockService {
     final config = await _loadConfig();
     final uri = Uri.tryParse(url);
     if (uri == null || uri.host.isEmpty) return false;
-    
+
     // Check both remote config domains and our local aggressive fallback blocklist
     final allDomains = <String>{...config.domains, ..._fallbackDomains};
-    
+
     // Explicitly whitelist critical streaming domains
     allDomains.remove('vidsrcme.ru');
     allDomains.remove('2embed.cc');
-    
+
     return allDomains.any((domain) => uri.host.contains(domain));
   }
 
@@ -77,7 +129,8 @@ class AdBlockService {
     final config = await _loadConfig();
     final uri = Uri.tryParse(currentUrl);
     final domain = uri?.host ?? '';
-    final selectors = config.selectors[domain] ?? ['.header', '.logo', 'footer'];
+    final selectors =
+        config.selectors[domain] ?? ['.header', '.logo', 'footer'];
     final targetListJson = jsonEncode(selectors);
     final domainBlockJson = jsonEncode(config.domains.toList());
     return """

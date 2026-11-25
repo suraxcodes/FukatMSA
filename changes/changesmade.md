@@ -334,3 +334,39 @@ media_kit_video version 2.0.1 does not support keyboardShortcuts.
 
 ## Status
 Completed
+
+---
+
+## 2026-07-22 21:46
+
+## Task
+Reset codebase, port failover logic, fix geolocation, update trending logic.
+
+## Reason
+User requested reset to older TV UI commit while keeping fallback and making fixes.
+
+## what problem/error we fixed 
+- Removed accidental geolocation prompts from webviews.
+- Ported robust failover manager into older codebase.
+- Switched TMDB trending poster fetches from weekly to daily.
+
+## Files Changed 
+- lib/screens/player_screen.dart
+- lib/player/playback_manager.dart
+- lib/services/streaming_aggregator_service.dart
+- lib/services/tmdb_service.dart
+
+## Main Changes
+- Restored PlaybackManager to handle fallback stream cycling.
+- Added onGeolocationPermissionsShowPrompt returning llow: false to silently deny tracker location requests in webviews.
+- Edited TMDB API calls to hit /trending/movie/day instead of week.
+- Fixed emoteEnv compile errors in aggregator service by switching back to dotenv.env.
+
+## Technical Notes
+- We used git reset --hard to go back to c25d2c9 and force pushed to GitHub. The auto updater commit was erased.
+
+## Breaking Changes
+None
+
+## Status
+Completed

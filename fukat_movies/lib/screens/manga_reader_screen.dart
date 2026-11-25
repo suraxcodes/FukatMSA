@@ -12,17 +12,17 @@ class MangaReaderScreen extends StatefulWidget {
   final String mangaTitle;
 
   const MangaReaderScreen({
-    Key? key,
+    super.key,
     required this.chapterId,
     required this.chapterNum,
     required this.mangaTitle,
-  }) : super(key: key);
+  });
 
   @override
-  _MangaReaderScreenState createState() => _MangaReaderScreenState();
+  MangaReaderScreenState createState() => MangaReaderScreenState();
 }
 
-class _MangaReaderScreenState extends State<MangaReaderScreen> {
+class MangaReaderScreenState extends State<MangaReaderScreen> {
   bool _isLoading = true;
   List<String> _pageUrls = [];
   int _currentPageIndex = 0;
@@ -47,7 +47,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     setState(() {
       _isFullscreen = !_isFullscreen;
     });
-    
+
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       await windowManager.setFullScreen(_isFullscreen);
     } else if (Platform.isAndroid || Platform.isIOS) {
@@ -76,104 +76,135 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black, // Immersive reading
-      appBar: _isFullscreen ? null : AppBar(
-        title: Text('${widget.mangaTitle} - Ch ${widget.chapterNum}', style: const TextStyle(color: Colors.white, fontSize: 16)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          FocusableButton(
-            margin: const EdgeInsets.all(8.0),
-            padding: const EdgeInsets.all(8.0),
-            child: const Icon(Icons.fullscreen, color: Colors.white),
-            onTap: _toggleFullscreen,
-          ),
-        ],
-      ),
+      appBar: _isFullscreen
+          ? null
+          : AppBar(
+              title: Text(
+                '${widget.mangaTitle} - Ch ${widget.chapterNum}',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              iconTheme: const IconThemeData(color: Colors.white),
+              actions: [
+                FocusableButton(
+                  margin: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(8.0),
+                  onTap: _toggleFullscreen,
+                  child: const Icon(Icons.fullscreen, color: Colors.white),
+                ),
+              ],
+            ),
       extendBodyBehindAppBar: true, // allows full screen reading
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.redAccent))
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.redAccent),
+            )
           : _pageUrls.isEmpty
-              ? const Center(child: Text("Failed to load pages.", style: TextStyle(color: Colors.white)))
-              : Stack(
-                  children: [
-                    PageView.builder(
-                      controller: _pageController,
-                      itemCount: _pageUrls.length,
-                      scrollBehavior: const MaterialScrollBehavior().copyWith(
-                        dragDevices: {
-                          PointerDeviceKind.mouse,
-                          PointerDeviceKind.touch,
-                          PointerDeviceKind.trackpad,
-                        },
-                      ),
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentPageIndex = index;
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        return InteractiveViewer(
-                          panEnabled: true,
-                          minScale: 1.0,
-                          maxScale: 4.0,
-                          child: Center(
-                            child: Image.network(
-                              _pageUrls[index],
-                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
-                              fit: BoxFit.contain,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return const Center(
-                                  child: CircularProgressIndicator(color: Colors.white30),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.white54, size: 50),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    // Page Indicator Overlay and Fullscreen exit
-                    Positioned(
-                      bottom: 30,
-                      left: 0,
-                      right: 0,
+          ? const Center(
+              child: Text(
+                "Failed to load pages.",
+                style: TextStyle(color: Colors.white),
+              ),
+            )
+          : Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: _pageUrls.length,
+                  scrollBehavior: const MaterialScrollBehavior().copyWith(
+                    dragDevices: {
+                      PointerDeviceKind.mouse,
+                      PointerDeviceKind.touch,
+                      PointerDeviceKind.trackpad,
+                    },
+                  ),
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentPageIndex = index;
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    return InteractiveViewer(
+                      panEnabled: true,
+                      minScale: 1.0,
+                      maxScale: 4.0,
                       child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(20),
+                        child: Image.network(
+                          _pageUrls[index],
+                          headers: const {
+                            'User-Agent':
+                                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                          },
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white30,
                               ),
-                              child: Text(
-                                'Page ${_currentPageIndex + 1} / ${_pageUrls.length}',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.broken_image,
+                                color: Colors.white54,
+                                size: 50,
                               ),
-                            ),
-                            if (_isFullscreen) ...[
-                              const SizedBox(width: 10),
-                              Container(
-                                decoration: const BoxDecoration(
-                                  color: Colors.black54,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: FocusableButton(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: const Icon(Icons.fullscreen_exit, color: Colors.white),
-                                  onTap: _toggleFullscreen,
-                                ),
-                              ),
-                            ]
-                          ],
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
+                // Page Indicator Overlay and Fullscreen exit
+                Positioned(
+                  bottom: 30,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'Page ${_currentPageIndex + 1} / ${_pageUrls.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (_isFullscreen) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: FocusableButton(
+                              padding: const EdgeInsets.all(8.0),
+                              onTap: _toggleFullscreen,
+                              child: const Icon(
+                                Icons.fullscreen_exit,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

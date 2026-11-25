@@ -1,17 +1,41 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'remote_config_service.dart';
-import 'stremio_scraper_service.dart';
+/// Bridges the resolver to the native/external engines.
+///
+/// ## What was wrong before
+///
+/// `_getProxifyStream` called `$PROXIFY/api/stream?title=…&ep=…` and read
+/// `data['stream_url']`. That route **does not exist** (verified 404) — the
+/// service it pointed at is a *proxy generator*, not a resolver. Its real
+/// endpoint is `GET /proxy?data={hlsUrl}|{referer}`, which returns encoded
+/// mirrors of a stream you *already have*.
+///
+/// So proxify is not a provider. It is a **post-processing step**: when a
+/// provider hands back an m3u8 whose CDN rejects you for a missing Referer,
+/// we can rewrite it through the proxy. This file now reflects that.
+library;
+
+import 'dart:async';
+
+import '../core/app_config.dart';
+import '../core/errors.dart';
+import '../core/http_json.dart';
+import '../core/log.dart';
+import 'stremio_addon_service.dart';
 
 class StreamingAggregatorService {
-  static String get proxifyStreamsUrl =>
-      dotenv.env['PROXIFY_STREAMS_URL'] ??
-      'https://proxify-streamsmsa.onrender.com';
+  StreamingAggregatorService._();
 
-  static String? preferredProvider; // Added to remember the working provider
+  static const String _tag = 'Aggregator';
 
-  /// Fetch the native streaming URL (.m3u8) using the selected next-gen API
+  /// Engine ids that resolve a stream server-side.
+  static const Set<String> nativeEngines = {'native_stremio', 'native_proxify'};
+
+  /// Engine ids that run the headless-WebView extractor on the client.
+  static const Set<String> extractorEngines = {'native_extractor'};
+
+  /// The last provider that actually played something. Used to try the
+  /// winner first on the next episode instead of re-racing all of them.
+  static String? preferredProvider;
+
   static Future<Map<String, dynamic>?> getNativeStreamingUrl({
     required String title,
     required String engine,
@@ -21,80 +45,94 @@ class StreamingAggregatorService {
     int episodeNumber = 1,
     bool isDub = false,
   }) async {
-    print(
-      "Aggregator: Resolving $title (S$season E$episodeNumber) via $engine",
-    );
+    Log.d(_tag, 'resolve "$title" S$season E$episodeNumber via $engine');
 
-    if (engine == 'native_proxify') {
-      return await _getProxifyStream(title, episodeNumber);
-    } else if (engine == 'native_stremio' && tmdbId != null) {
-      return await _getStremioStream(tmdbId, isMovie, season, episodeNumber);
-    }
-    return null;
-  }
-
-  static Future<Map<String, dynamic>?> _getProxifyStream(
-    String title,
-    int ep,
-  ) async {
-    try {
-      final url = Uri.parse(
-        '$proxifyStreamsUrl/api/stream?title=${Uri.encodeComponent(title)}&ep=$ep',
-      );
-      print("Aggregator: Fetching Proxify stream from $url");
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['stream_url'] != null) {
-          String streamUrl = data['stream_url'].toString();
-
-          return {
-            'streams': [
-              {
-                'quality': 'Auto',
-                'url': streamUrl,
-                'headers': {
-                  'User-Agent':
-                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                  'Origin': 'https://vidsrc.to',
-                  'Referer': 'https://vidsrc.to/',
-                },
-              },
-            ],
-            'url': streamUrl,
-            'headers': {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Origin': 'https://vidsrc.to',
-              'Referer': 'https://vidsrc.to/',
-            },
-            'hasSub': true,
-            'hasDub': false,
-            'subtitles': [],
-          };
+    switch (engine) {
+      case 'native_stremio':
+        if (tmdbId == null || tmdbId.isEmpty) {
+          throw const AppError(
+            AppErrorKind.badRequest,
+            'native_stremio needs a tmdbId',
+          );
         }
-      } else {
-        print("Aggregator: Proxify failed with status ${response.statusCode}");
-      }
-    } catch (e) {
-      print("Proxify API Error: $e");
+        return StremioAddonService.getStream(
+          type: isMovie ? 'movie' : 'series',
+          tmdbId: tmdbId,
+          season: season,
+          episode: episodeNumber,
+        );
+
+      case 'native_proxify':
+        // Proxify cannot resolve by title. Refuse loudly instead of silently
+        // firing a request that is guaranteed to 404.
+        throw const AppError(
+          AppErrorKind.badRequest,
+          'native_proxify is a URL rewriter, not a provider — remove it from '
+          'remote_config.json (see docs/PROVIDERS.md).',
+        );
+
+      default:
+        throw AppError(
+          AppErrorKind.badRequest,
+          'unknown native engine "$engine"',
+        );
     }
-    return null;
   }
 
-  static Future<Map<String, dynamic>?> _getStremioStream(String tmdbId, bool isMovie, int season, int ep) async {
-    print("Aggregator: Fetching stream from Stremio addons...");
+  // ------------------------------------------------------------- proxify
+
+  /// Rewrites an HLS URL through the self-hosted proxy so a strict CDN
+  /// Referer check passes. Returns the original URL unchanged when no proxy
+  /// is configured or the proxy fails — playback must never depend on it.
+  static Future<String> proxyHlsIfConfigured(
+    String hlsUrl, {
+    String? referer,
+  }) async {
+    final base = AppConfig.proxifyStreamsUrl;
+    if (base.isEmpty) return hlsUrl;
+
+    final ref = referer ?? _refererFor(hlsUrl);
     try {
-      return await StremioScraperService.getStream(
-        type: isMovie ? 'movie' : 'series',
-        tmdbId: tmdbId,
-        season: season,
-        episode: ep,
+      final uri = Uri.parse(
+        '$base/proxy',
+      ).replace(queryParameters: {'data': '$hlsUrl|$ref'});
+      final data = await HttpJson.getJson(
+        uri,
+        headers: {
+          if (AppConfig.proxifySharedSecret.isNotEmpty)
+            'X-Api-Key': AppConfig.proxifySharedSecret,
+        },
+        timeout: const Duration(seconds: 12),
+        context: 'proxify',
       );
-    } catch(e) {
-      print("Stremio Scraper Error: $e");
+
+      final source = (data is Map ? data['proxifiedSource'] : null);
+      if (source is Map && source.isNotEmpty) {
+        // Prefer the mirror most likely to allow CORS/range requests.
+        for (final key in const [
+          'animanga',
+          'lunaranime',
+          'anikuro',
+          'miruro',
+        ]) {
+          final url = source[key];
+          if (url is String && url.isNotEmpty) {
+            Log.i(_tag, 'proxied via $key');
+            return url;
+          }
+        }
+      }
+    } on AppError catch (e) {
+      Log.w(_tag, 'proxy rewrite failed, using direct url', e);
     }
-    return null;
+    return hlsUrl;
+  }
+
+  static String _refererFor(String url) {
+    final host = Uri.tryParse(url)?.host ?? '';
+    // CDNs in this space generally accept the origin site as referer.
+    if (host.contains('owocdn')) return 'https://kwik.cx/';
+    if (host.contains('code29wave')) return 'https://megaup.nl/';
+    return 'https://$host/';
   }
 }

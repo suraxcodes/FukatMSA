@@ -1,36 +1,110 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+/// User-supplied provider repo (paste a URL or scan a QR code).
+///
+/// Hardened: the URL must be HTTPS, the document must validate against the
+/// provider schema before it is *saved* (not just before it is used), and the
+/// user is shown exactly which hosts they are about to trust.
+library;
+
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../core/errors.dart';
+import '../core/http_json.dart';
+import '../core/log.dart';
+import 'remote_config_service.dart';
+
+class RepoValidation {
+  final bool ok;
+  final int providerCount;
+  final List<String> hosts;
+  final String message;
+
+  const RepoValidation({
+    required this.ok,
+    this.providerCount = 0,
+    this.hosts = const [],
+    required this.message,
+  });
+}
+
 class CustomRepoService {
+  CustomRepoService._();
+
+  static const String _tag = 'CustomRepo';
   static const String _boxName = 'customRepoBox';
   static const String _keyUrl = 'custom_repo_url';
 
   static Future<Box> _getBox() async {
-    if (Hive.isBoxOpen(_boxName)) {
-      return Hive.box(_boxName);
+    if (Hive.isBoxOpen(_boxName)) return Hive.box(_boxName);
+    return Hive.openBox(_boxName);
+  }
+
+  /// Fetches and validates without saving, so the UI can show a confirmation
+  /// dialog ("this repo adds N providers on these hosts — continue?").
+  static Future<RepoValidation> check(String url) async {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.isAbsolute) {
+      return const RepoValidation(
+        ok: false,
+        message: 'That is not a valid URL.',
+      );
     }
-    return await Hive.openBox(_boxName);
+    if (uri.scheme != 'https') {
+      return const RepoValidation(
+        ok: false,
+        message: 'Only https:// repository URLs are accepted.',
+      );
+    }
+
+    try {
+      final data = await HttpJson.getJson(
+        uri,
+        timeout: const Duration(seconds: 12),
+        context: 'custom repo',
+      );
+      final config = RemoteConfigService.validate(data, source: 'custom repo');
+
+      if (config.providers.isEmpty) {
+        return RepoValidation(
+          ok: false,
+          message: config.rejected.isEmpty
+              ? 'That file contains no providers.'
+              : 'No valid providers. Rejected:\n${config.rejected.take(3).join('\n')}',
+        );
+      }
+
+      final hosts = <String>{};
+      for (final p in config.providers) {
+        for (final key in const ['movie_url', 'tv_url']) {
+          final host = Uri.tryParse('${p[key] ?? ''}')?.host;
+          if (host != null && host.isNotEmpty) hosts.add(host);
+        }
+      }
+
+      return RepoValidation(
+        ok: true,
+        providerCount: config.providers.length,
+        hosts: hosts.toList()..sort(),
+        message:
+            '${config.providers.length} provider(s)'
+            '${config.rejected.isEmpty ? '' : ', ${config.rejected.length} rejected'}',
+      );
+    } on AppError catch (e) {
+      return RepoValidation(ok: false, message: e.userMessage);
+    } catch (e) {
+      Log.w(_tag, 'check failed', e);
+      return const RepoValidation(
+        ok: false,
+        message: 'Could not read that repo.',
+      );
+    }
   }
 
   static Future<bool> saveRepoUrl(String url) async {
-    try {
-      final uri = Uri.parse(url);
-      if (!uri.isAbsolute) return false;
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data is Map<String, dynamic> && data.containsKey('active_providers') && data['active_providers'] is List) {
-          final box = await _getBox();
-          await box.put(_keyUrl, url);
-          return true;
-        }
-      }
-    } catch (e) {
-      print('Failed to save repo url: $e');
-    }
-    return false;
+    final validation = await check(url);
+    if (!validation.ok) return false;
+    final box = await _getBox();
+    await box.put(_keyUrl, url.trim());
+    return true;
   }
 
   static Future<String?> getRepoUrl() async {
@@ -43,23 +117,22 @@ class CustomRepoService {
     await box.delete(_keyUrl);
   }
 
+  /// Fetches and validates the saved repo. Returns null when unset or invalid.
   static Future<List<dynamic>?> fetchCustomProviders() async {
-    try {
-      final url = await getRepoUrl();
-      if (url == null) return null;
+    final url = await getRepoUrl();
+    if (url == null || url.isEmpty) return null;
 
-      final uri = Uri.parse(url);
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data is Map<String, dynamic> && data.containsKey('active_providers') && data['active_providers'] is List) {
-          return data['active_providers'] as List<dynamic>;
-        }
-      }
-    } catch (e) {
-      print('Failed to fetch custom providers: $e');
+    try {
+      final data = await HttpJson.getJson(
+        Uri.parse(url),
+        timeout: const Duration(seconds: 12),
+        context: 'custom repo',
+      );
+      final config = RemoteConfigService.validate(data, source: 'custom repo');
+      return config.providers.isEmpty ? null : config.providers;
+    } on AppError catch (e) {
+      Log.w(_tag, 'fetch failed', e);
+      return null;
     }
-    return null;
   }
 }

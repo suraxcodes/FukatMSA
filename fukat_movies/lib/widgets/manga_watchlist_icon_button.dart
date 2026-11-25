@@ -5,16 +5,14 @@ import 'focusable_button.dart';
 class MangaWatchlistIconButton extends StatefulWidget {
   final Map<String, dynamic> manga;
 
-  const MangaWatchlistIconButton({
-    Key? key,
-    required this.manga,
-  }) : super(key: key);
+  const MangaWatchlistIconButton({super.key, required this.manga});
 
   @override
-  _MangaWatchlistIconButtonState createState() => _MangaWatchlistIconButtonState();
+  MangaWatchlistIconButtonState createState() =>
+      MangaWatchlistIconButtonState();
 }
 
-class _MangaWatchlistIconButtonState extends State<MangaWatchlistIconButton> {
+class MangaWatchlistIconButtonState extends State<MangaWatchlistIconButton> {
   bool isSaved = false;
 
   @override
@@ -24,7 +22,9 @@ class _MangaWatchlistIconButtonState extends State<MangaWatchlistIconButton> {
   }
 
   Future<void> _checkSavedStatus() async {
-    final saved = await MangaWatchlistService.isSaved(widget.manga['id'].toString());
+    final saved = await MangaWatchlistService.isSaved(
+      widget.manga['id'].toString(),
+    );
     if (mounted) {
       setState(() {
         isSaved = saved;
@@ -63,10 +63,10 @@ class _MangaWatchlistIconButtonState extends State<MangaWatchlistIconButton> {
         border: Border.all(color: Colors.redAccent, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.redAccent.withOpacity(0.6),
+            color: Colors.redAccent.withValues(alpha: 0.6),
             blurRadius: 8,
             spreadRadius: 2,
-          )
+          ),
         ],
       ),
       padding: const EdgeInsets.all(8.0),

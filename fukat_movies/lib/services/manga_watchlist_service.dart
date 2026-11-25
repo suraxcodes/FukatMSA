@@ -13,7 +13,8 @@ class MangaWatchlistService {
     await _getBox();
   }
 
-  static ValueListenable<Box<dynamic>> get listenable => Hive.box('mangaWatchlistBox').listenable();
+  static ValueListenable<Box<dynamic>> get listenable =>
+      Hive.box('mangaWatchlistBox').listenable();
 
   static Future<void> toggleManga(Map<String, dynamic> manga) async {
     final box = await _getBox();

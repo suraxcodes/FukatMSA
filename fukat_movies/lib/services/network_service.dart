@@ -11,16 +11,19 @@ class NetworkService {
 
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _subscription;
-  
+
   // Stream to broadcast network speed changes
-  final StreamController<NetworkSpeed> _speedController = StreamController<NetworkSpeed>.broadcast();
+  final StreamController<NetworkSpeed> _speedController =
+      StreamController<NetworkSpeed>.broadcast();
   Stream<NetworkSpeed> get onSpeedChange => _speedController.stream;
 
   NetworkSpeed currentSpeed = NetworkSpeed.unknown;
   List<ConnectivityResult> currentConnection = [ConnectivityResult.none];
 
   void initialize() {
-    _subscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> result) async {
+    _subscription = _connectivity.onConnectivityChanged.listen((
+      List<ConnectivityResult> result,
+    ) async {
       currentConnection = result;
       if (result.contains(ConnectivityResult.none)) {
         _updateSpeed(NetworkSpeed.offline);
@@ -29,7 +32,7 @@ class NetworkService {
         await checkNetworkSpeed();
       }
     });
-    
+
     // Initial check
     _connectivity.checkConnectivity().then((result) async {
       currentConnection = result;
@@ -57,8 +60,10 @@ class NetworkService {
     try {
       final startTime = DateTime.now();
       // Ping a reliable small payload to measure latency/speed (Google's blank page)
-      final response = await http.get(Uri.parse('https://www.google.com/generate_204')).timeout(const Duration(seconds: 5));
-      
+      await http
+          .get(Uri.parse('https://www.google.com/generate_204'))
+          .timeout(const Duration(seconds: 5));
+
       final endTime = DateTime.now();
       final duration = endTime.difference(startTime).inMilliseconds;
 

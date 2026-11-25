@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.fukat_MSA"
+    namespace = "app.fukat.msa"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,11 +20,14 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.fukat_MSA"
+        // NOTE: com.example.* is rejected by the Play Store. Replace this with
+        // your own reverse-domain id before your first upload.
+        applicationId = "app.fukat.msa"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Pinned: media_kit + flutter_launcher_icons both require >= 21,
+        // and 23 is the floor for modern media codecs.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

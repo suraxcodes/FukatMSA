@@ -5,11 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'focusable_button.dart';
 
 class AuthPopup extends StatefulWidget {
+  const AuthPopup({super.key});
+
   @override
-  _AuthPopupState createState() => _AuthPopupState();
+  AuthPopupState createState() => AuthPopupState();
 }
 
-class _AuthPopupState extends State<AuthPopup> {
+class AuthPopupState extends State<AuthPopup> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _otpController = TextEditingController();
@@ -52,8 +54,14 @@ class _AuthPopupState extends State<AuthPopup> {
           _showSuccess('Verification code sent to email!');
         } else {
           // Verify OTP
-          if (otp.isEmpty) throw Exception('Please enter the verification code');
-          await SupabaseAuthService.verifyOTP(email: email, token: otp, type: _currentOtpType);
+          if (otp.isEmpty) {
+            throw Exception('Please enter the verification code');
+          }
+          await SupabaseAuthService.verifyOTP(
+            email: email,
+            token: otp,
+            type: _currentOtpType,
+          );
           if (mounted) Navigator.pop(context); // Close popup on success
         }
       } else {
@@ -70,7 +78,9 @@ class _AuthPopupState extends State<AuthPopup> {
             _otpSent = true;
             _currentOtpType = OtpType.signup;
           });
-          _showSuccess('Account created! Please check your email for the verification code.');
+          _showSuccess(
+            'Account created! Please check your email for the verification code.',
+          );
         }
       }
     } on AuthException catch (e) {
@@ -129,12 +139,12 @@ class _AuthPopupState extends State<AuthPopup> {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Container(
-                  color: Colors.black.withOpacity(0.6), // Dark overlay
+                  color: Colors.black.withValues(alpha: 0.6), // Dark overlay
                 ),
               ),
             ),
           ),
-          
+
           // Content
           Container(
             width: 400,
@@ -144,8 +154,8 @@ class _AuthPopupState extends State<AuthPopup> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _useOtp 
-                      ? (_otpSent ? 'Enter Code' : 'Magic Link / OTP') 
+                  _useOtp
+                      ? (_otpSent ? 'Enter Code' : 'Magic Link / OTP')
                       : (_isLogin ? 'Welcome Back' : 'Create Account'),
                   style: const TextStyle(
                     color: Colors.white,
@@ -155,14 +165,14 @@ class _AuthPopupState extends State<AuthPopup> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _useOtp && _otpSent 
+                  _useOtp && _otpSent
                       ? 'Check your email for the verification code or magic link.'
                       : 'Log in to sync your Watchlist & History',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Fields
                 TextField(
                   controller: _emailController,
@@ -181,7 +191,7 @@ class _AuthPopupState extends State<AuthPopup> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 if (_useOtp && _otpSent) ...[
                   TextField(
                     controller: _otpController,
@@ -189,7 +199,10 @@ class _AuthPopupState extends State<AuthPopup> {
                     decoration: InputDecoration(
                       labelText: '6-Digit Code',
                       labelStyle: const TextStyle(color: Colors.white54),
-                      prefixIcon: const Icon(Icons.lock_clock, color: Colors.white54),
+                      prefixIcon: const Icon(
+                        Icons.lock_clock,
+                        color: Colors.white54,
+                      ),
                       filled: true,
                       fillColor: Colors.black45,
                       border: OutlineInputBorder(
@@ -217,9 +230,9 @@ class _AuthPopupState extends State<AuthPopup> {
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Submit Button
                 SizedBox(
                   width: double.infinity,
@@ -235,15 +248,18 @@ class _AuthPopupState extends State<AuthPopup> {
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
-                            _useOtp 
-                                ? (_otpSent ? 'Verify & Login' : 'Send Code') 
+                            _useOtp
+                                ? (_otpSent ? 'Verify & Login' : 'Send Code')
                                 : (_isLogin ? 'Login' : 'Sign Up'),
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Toggles
                 if (!_otpSent) ...[
                   Row(
@@ -257,7 +273,10 @@ class _AuthPopupState extends State<AuthPopup> {
                         ),
                       ),
                       if (!_useOtp) ...[
-                        const Text('|', style: TextStyle(color: Colors.white30)),
+                        const Text(
+                          '|',
+                          style: TextStyle(color: Colors.white30),
+                        ),
                         TextButton(
                           onPressed: () => setState(() => _isLogin = !_isLogin),
                           child: Text(
@@ -265,14 +284,14 @@ class _AuthPopupState extends State<AuthPopup> {
                             style: const TextStyle(color: Colors.redAccent),
                           ),
                         ),
-                      ]
+                      ],
                     ],
                   ),
                 ],
               ],
             ),
           ),
-          
+
           // Close button
           Positioned(
             top: 8,

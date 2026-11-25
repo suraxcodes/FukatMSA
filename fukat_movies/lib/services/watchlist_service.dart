@@ -15,9 +15,22 @@ class WatchlistService {
     await _getBox();
   }
 
-  static ValueListenable<Box<dynamic>> get listenable => Hive.box('watchlistBox').listenable();
+  /// Null-safe listenable for widgets that may build before the box opens.
+  static ValueListenable<Box<dynamic>>? get listenableOrNull =>
+      Hive.isBoxOpen('watchlistBox')
+      ? Hive.box('watchlistBox').listenable()
+      : null;
 
-  static Future<void> toggleItem(String tmdbId, String title, String? posterPath, bool isMovie, {bool isAnime = false}) async {
+  static ValueListenable<Box<dynamic>> get listenable =>
+      Hive.box('watchlistBox').listenable();
+
+  static Future<void> toggleItem(
+    String tmdbId,
+    String title,
+    String? posterPath,
+    bool isMovie, {
+    bool isAnime = false,
+  }) async {
     final box = await _getBox();
     if (box.containsKey(tmdbId)) {
       await box.delete(tmdbId);
@@ -31,7 +44,7 @@ class WatchlistService {
         'savedAt': DateTime.now().toIso8601String(),
       });
     }
-    
+
     // Trigger background sync
     SupabaseSyncService.syncWatchlist();
   }
@@ -44,9 +57,15 @@ class WatchlistService {
   static Future<List<Map<String, dynamic>>> getAllItems() async {
     final box = await _getBox();
     final items = box.values
+        .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
-        .toList()
-      ..sort((a, b) => DateTime.parse(b['savedAt']).compareTo(DateTime.parse(a['savedAt'])));
+        .toList();
+    items.sort((a, b) {
+      final aDate = DateTime.tryParse('${a['savedAt'] ?? ''}');
+      final bDate = DateTime.tryParse('${b['savedAt'] ?? ''}');
+      if (aDate == null || bDate == null) return 0;
+      return bDate.compareTo(aDate);
+    });
     return items;
   }
 }

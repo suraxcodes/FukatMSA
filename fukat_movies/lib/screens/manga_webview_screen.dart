@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../core/log.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../widgets/focusable_button.dart';
 
@@ -6,13 +8,13 @@ class MangaWebviewScreen extends StatefulWidget {
   final String url;
   final String title;
 
-  const MangaWebviewScreen({Key? key, required this.url, required this.title}) : super(key: key);
+  const MangaWebviewScreen({super.key, required this.url, required this.title});
 
   @override
-  _MangaWebviewScreenState createState() => _MangaWebviewScreenState();
+  MangaWebviewScreenState createState() => MangaWebviewScreenState();
 }
 
-class _MangaWebviewScreenState extends State<MangaWebviewScreen> {
+class MangaWebviewScreenState extends State<MangaWebviewScreen> {
   double _progress = 0;
   InAppWebViewController? webViewController;
 
@@ -21,7 +23,10 @@ class _MangaWebviewScreenState extends State<MangaWebviewScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16)),
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -51,7 +56,8 @@ class _MangaWebviewScreenState extends State<MangaWebviewScreen> {
                   transparentBackground: false,
                   mediaPlaybackRequiresUserGesture: false,
                   javaScriptEnabled: true,
-                  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  userAgent:
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 ),
                 onWebViewCreated: (controller) {
                   webViewController = controller;
@@ -62,10 +68,13 @@ class _MangaWebviewScreenState extends State<MangaWebviewScreen> {
                   });
                 },
                 onConsoleMessage: (controller, consoleMessage) {
-                  print("WebView Console: \${consoleMessage.message}");
+                  Log.d('MangaWebView', consoleMessage.message);
                 },
-                onLoadError: (controller, url, code, message) {
-                  print("WebView Load Error: $message (code: $code)");
+                onReceivedError: (controller, request, error) {
+                  Log.w(
+                    'MangaWebView',
+                    'load error ${error.description} (code ${error.type})',
+                  );
                 },
               ),
             ),

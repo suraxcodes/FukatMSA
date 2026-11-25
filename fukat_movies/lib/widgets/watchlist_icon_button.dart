@@ -12,7 +12,8 @@ class WatchlistIconButton extends StatefulWidget {
   final bool showText;
   final String text;
 
-  WatchlistIconButton({
+  const WatchlistIconButton({
+    super.key,
     required this.tmdbId,
     required this.title,
     required this.posterPath,
@@ -23,10 +24,10 @@ class WatchlistIconButton extends StatefulWidget {
   });
 
   @override
-  _WatchlistIconButtonState createState() => _WatchlistIconButtonState();
+  WatchlistIconButtonState createState() => WatchlistIconButtonState();
 }
 
-class _WatchlistIconButtonState extends State<WatchlistIconButton> {
+class WatchlistIconButtonState extends State<WatchlistIconButton> {
   bool _isSaved = false;
 
   @override
@@ -95,10 +96,10 @@ class _WatchlistIconButtonState extends State<WatchlistIconButton> {
             border: Border.all(color: Colors.redAccent, width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.redAccent.withOpacity(0.6),
+                color: Colors.redAccent.withValues(alpha: 0.6),
                 blurRadius: 8,
                 spreadRadius: 2,
-              )
+              ),
             ],
           ),
           padding: const EdgeInsets.all(8.0),

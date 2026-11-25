@@ -11,7 +11,7 @@ class FocusableButton extends StatefulWidget {
   final double scaleFactor;
 
   const FocusableButton({
-    Key? key,
+    super.key,
     required this.child,
     required this.onTap,
     this.defaultDecoration,
@@ -19,34 +19,38 @@ class FocusableButton extends StatefulWidget {
     this.margin = EdgeInsets.zero,
     this.padding = EdgeInsets.zero,
     this.scaleFactor = 1.05,
-  }) : super(key: key);
+  });
 
   @override
-  State<FocusableButton> createState() => _FocusableButtonState();
+  State<FocusableButton> createState() => FocusableButtonState();
 }
 
-class _FocusableButtonState extends State<FocusableButton> {
+class FocusableButtonState extends State<FocusableButton> {
   bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
     // Global standard for TV focus if custom ones aren't provided
-    final defDec = widget.defaultDecoration ?? BoxDecoration(
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.transparent, width: 3),
-    );
+    final defDec =
+        widget.defaultDecoration ??
+        BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.transparent, width: 3),
+        );
 
-    final focDec = widget.focusedDecoration ?? BoxDecoration(
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.redAccent, width: 3),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.redAccent.withOpacity(0.6),
-          blurRadius: 12,
-          spreadRadius: 2,
-        )
-      ],
-    );
+    final focDec =
+        widget.focusedDecoration ??
+        BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.redAccent, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.redAccent.withValues(alpha: 0.6),
+              blurRadius: 12,
+              spreadRadius: 2,
+            ),
+          ],
+        );
 
     return Container(
       margin: widget.margin,
@@ -63,9 +67,9 @@ class _FocusableButtonState extends State<FocusableButton> {
             onKeyEvent: (node, event) {
               if (event is KeyDownEvent) {
                 final key = event.logicalKey;
-                if (key == LogicalKeyboardKey.select || 
-                    key == LogicalKeyboardKey.enter || 
-                    key == LogicalKeyboardKey.space || 
+                if (key == LogicalKeyboardKey.select ||
+                    key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.space ||
                     key == LogicalKeyboardKey.numpadEnter) {
                   widget.onTap();
                   return KeyEventResult.handled;

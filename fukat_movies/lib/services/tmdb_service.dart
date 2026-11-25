@@ -1,215 +1,67 @@
-import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart';
+/// Thin backwards-compatible façade over [TmdbClient].
+///
+/// The screens were written against a static `TmdbService`; rather than touch
+/// every call site at once, this file forwards to the cached client. New code
+/// should import `tmdb_client.dart` directly and use its typed errors.
+library;
+
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
+import 'tmdb_client.dart';
+
+export 'tmdb_client.dart' show HomeFeed;
+
 class TmdbService {
-  static String get _baseUrl => dotenv.env['TMDB_BASE_URL'] ?? 'https://api.tmdb.org/3';
+  static Future<String?> getImdbId(int tmdbId, bool isMovie) =>
+      TmdbClient.getImdbId(tmdbId, isMovie);
 
-  // Background Isolate JSON parser to eliminate UI frame jank
-  static Map<String, dynamic> _parseJson(String responseBody) {
-    return json.decode(responseBody) as Map<String, dynamic>;
-  }
+  static Future<Map<String, dynamic>?> getMovieDetails(int tmdbId) =>
+      TmdbClient.getMovieDetails(tmdbId);
 
-  static Future<Map<String, dynamic>> _fetchAndDecode(String path) async {
-    final token = dotenv.env['TMDB_API_TOKEN'];
-    final apiKey = dotenv.env['TMDB_API_KEY'];
+  static Future<Map<String, dynamic>?> getSeriesDetails(int tmdbId) =>
+      TmdbClient.getSeriesDetails(tmdbId);
 
-    if ((token == null || token.isEmpty) && (apiKey == null || apiKey.isEmpty)) {
-      throw Exception('Missing configuration values: Configure TMDB keys in your .env file.');
-    }
+  static Future<List<dynamic>> getSeasonEpisodes(
+    int tmdbId,
+    int seasonNumber,
+  ) => TmdbClient.getSeasonEpisodes(tmdbId, seasonNumber);
 
-    // 🚀 THE CRITICAL FIX: Extract inline parameters cleanly to prevent broken URI formatting
-    final cleanPath = path.contains('?') ? path.split('?')[0] : path;
-    final inlineQueryString = path.contains('?') ? path.split('?')[1] : '';
-    
-    // Parse the base path safely
-    Uri uri = Uri.parse('$_baseUrl$cleanPath');
-    
-    // Extract any existing query parameters from the path string
-    Map<String, String> mergedQueryParameters = Map.from(uri.queryParameters);
-    if (inlineQueryString.isNotEmpty) {
-      final parsedQuery = Uri.splitQueryString(inlineQueryString);
-      mergedQueryParameters.addAll(parsedQuery);
-    }
+  static Future<List<dynamic>> getTrendingMovies() =>
+      TmdbClient.getTrendingMovies();
 
-    // Assign fallback v3 API key ONLY if the primary v4 Bearer Token is missing
-    final bool useV4Token = token != null && token.isNotEmpty;
-    if (!useV4Token && apiKey != null) {
-      mergedQueryParameters['api_key'] = apiKey;
-    }
+  static Future<List<dynamic>> getTrendingTvShows() =>
+      TmdbClient.getTrendingTvShows();
 
-    // Reconstruct the clean, unified Uri structure
-    uri = uri.replace(queryParameters: mergedQueryParameters.isNotEmpty ? mergedQueryParameters : null);
+  static Future<List<dynamic>> getTrendingAnime() =>
+      TmdbClient.getTrendingAnime();
 
-    if (kDebugMode) {
-      print('TMDB request URI: $uri');
-      print(useV4Token ? 'Authentication Strategy: TMDB v4 Bearer Token' : 'Authentication Strategy: TMDB v3 URL Parameter');
-    }
+  static Future<List<dynamic>> searchMedia(String query) =>
+      TmdbClient.searchMedia(query);
 
-    // Build Request Headers
-    final Map<String, String> headers = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json;charset=utf-8',
-    };
-    if (useV4Token) {
-      headers['Authorization'] = 'Bearer $token';
-    }
+  static Future<List<dynamic>> getSimilarMovies(int tmdbId) =>
+      TmdbClient.getSimilarMovies(tmdbId);
 
-    const int maxAttempts = 3;
-    int attempt = 0;
+  static Future<List<dynamic>> getSimilarTvShows(int tmdbId) =>
+      TmdbClient.getSimilarTvShows(tmdbId);
 
-    while (true) {
-      try {
-        final response = await http.get(uri, headers: headers).timeout(
-          const Duration(seconds: 12),
-          onTimeout: () => throw TimeoutException('Network latency threshold exceeded.'),
-        );
-
-        if (response.statusCode != 200) {
-          if (kDebugMode) {
-            print('❌ TMDB Server Rejection [Status ${response.statusCode}]: ${response.body}');
-          }
-          throw Exception('Failed TMDB request (${response.statusCode})');
-        }
-
-        // Returns clean decoded objects parsed inside a background Isolate worker thread
-        return await compute(_parseJson, response.body);
-
-      } on SocketException catch (se) {
-        if (kDebugMode) {
-          print('⚠️ TMDB Socket Exception (Attempt ${attempt + 1}): ${se.message}');
-        }
-        if (attempt >= maxAttempts - 1) rethrow;
-      } on TimeoutException catch (_) {
-        if (kDebugMode) {
-          print('⚠️ TMDB request timed out (Attempt ${attempt + 1})');
-        }
-        if (attempt >= maxAttempts - 1) rethrow;
-      } catch (e, stack) {
-        if (kDebugMode) {
-          print('❌ Unhandled Exception Context: $e\nStack: $stack');
-        }
-        rethrow;
-      }
-
-      attempt++;
-      // Exponential backoff strategy to reduce server hammer penalties
-      await Future.delayed(Duration(seconds: attempt * 2 + 1));
-    }
-  }
-
-  // Get external IMDB ID for a TMDB record
-  static Future<String?> getImdbId(int tmdbId, bool isMovie) async {
-    final type = isMovie ? 'movie' : 'tv';
-    try {
-      final data = await _fetchAndDecode('/$type/$tmdbId/external_ids');
-      return data['imdb_id'] as String?;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Get Movie details
-  static Future<Map<String, dynamic>?> getMovieDetails(int tmdbId) async {
-    try {
-      return await _fetchAndDecode('/movie/$tmdbId');
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Get TV series details
-  static Future<Map<String, dynamic>?> getSeriesDetails(int tmdbId) async {
-    try {
-      return await _fetchAndDecode('/tv/$tmdbId');
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Get episodes for a season of a TV series
-  static Future<List<dynamic>> getSeasonEpisodes(int tmdbId, int seasonNumber) async {
-    try {
-      final data = await _fetchAndDecode('/tv/$tmdbId/season/$seasonNumber');
-      final episodes = (data['episodes'] as List<dynamic>?) ?? [];
-      final now = DateTime.now();
-      
-      return episodes.where((ep) {
-        if (ep['episode_number'] == null) return false;
-        
-        final airDateStr = ep['air_date'];
-        if (airDateStr != null && airDateStr.toString().trim().isNotEmpty) {
-          try {
-            final airDate = DateTime.parse(airDateStr.toString().trim());
-            // 7-day buffer: shows episodes airing this week (to handle timezones & early leaks) 
-            // but hides episodes weeks or months in the future.
-            if (airDate.isAfter(now.add(const Duration(days: 7)))) {
-              return false;
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              print('Warning: Could not parse air_date "$airDateStr" for episode ${ep['episode_number']}. Error: $e');
-            }
-          }
-        }
-        return true;
-      }).toList();
-    } catch (e, stack) {
-      if (kDebugMode) {
-        print('Error fetching episodes for season $seasonNumber of show $tmdbId: $e');
-        print(stack);
-      }
-      return [];
-    }
-  }
-
-  // Get Trending Movies (daily)
-  static Future<List<dynamic>> getTrendingMovies() async {
-    final data = await _fetchAndDecode('/trending/movie/day');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
-
-  // Get Trending TV Shows (daily)
-  static Future<List<dynamic>> getTrendingTvShows() async {
-    final data = await _fetchAndDecode('/trending/tv/day');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
-
-  // Get Trending Anime (weekly)
-  static Future<List<dynamic>> getTrendingAnime() async {
-    final data = await _fetchAndDecode('/discover/tv?with_genres=16&sort_by=popularity.desc');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
-
-  // Search Media (movies & TV) by query string
-  static Future<List<dynamic>> searchMedia(String query) async {
-    final encoded = Uri.encodeComponent(query);
-    final data = await _fetchAndDecode('/search/multi?query=$encoded');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
-
-  // Simple internet connectivity check
+  /// Cheap DNS check used by the home screen's offline banner.
+  /// Prefer [TmdbClient.fetchHomeFeed] for real requests — it surfaces typed
+  /// [AppErrorKind.offline] instead of guessing from a DNS lookup.
   static Future<bool> hasInternetConnection() async {
     try {
-      final result = await InternetAddress.lookup('example.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } on SocketException catch (_) {
+      final result = await InternetAddress.lookup(
+        'one.one.one.one',
+      ).timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
+    } on SocketException {
+      return false;
+    } catch (_) {
       return false;
     }
   }
 
-  // Get Similar Movies
-  static Future<List<dynamic>> getSimilarMovies(int tmdbId) async {
-    final data = await _fetchAndDecode('/movie/$tmdbId/recommendations');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
-
-  // Get Similar TV Shows
-  static Future<List<dynamic>> getSimilarTvShows(int tmdbId) async {
-    final data = await _fetchAndDecode('/tv/$tmdbId/recommendations');
-    return (data['results'] as List<dynamic>?) ?? [];
-  }
+  /// Kept for the legacy ad-block / provider test paths that still use it.
+  static http.Client get client => http.Client();
 }

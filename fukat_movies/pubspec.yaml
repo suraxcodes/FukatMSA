@@ -1,5 +1,5 @@
 name: fukat_MSA
-description: "A new Flutter project."
+description: "Fukat MSA - a Flutter client for browsing and streaming movies, series, anime and manga."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -40,16 +40,13 @@ dependencies:
   flutter_dotenv: ^6.0.1
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  cached_network_image: ^3.2.3
   supabase_flutter: ^2.12.4
   mobile_scanner: ^7.2.0
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
   connectivity_plus: ^7.1.1
-  fluttertoast: ^9.1.0
   window_manager: ^0.4.3
-  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -76,7 +73,10 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/.env
+    # Both files are optional at runtime; the app degrades gracefully when
+    # they are absent (see lib/core/app_config.dart). Examples are shipped so a
+    # fresh clone builds and runs.
+    - assets/.env.example
     - assets/remote_config.json
 
 flutter_launcher_icons:
