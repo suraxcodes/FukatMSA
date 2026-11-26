@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="main.dart" type="FlutterRunConfigurationType" factoryName="Flutter">
+    <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
+    <envs>
+      <env name="MIRURO_API_URL" value="https://miruro-apimsa.onrender.com" />
+      <env name="KUUDERE_API_URL" value="https://kuudere-apimsa.onrender.com" />
+      <env name="PROXIFY_STREAMS_URL" value="https://proxify-streamsmsa.onrender.com" />
+    </envs>
+    <option name="additionalArgs" value="--dart-define=MIRURO_API_URL=https://miruro-apimsa.onrender.com --dart-define=KUUDERE_API_URL=https://kuudere-apimsa.onrender.com --dart-define=PROXIFY_STREAMS_URL=https://proxify-streamsmsa.onrender.com" />
+    <method />
+  </configuration>
+</component>

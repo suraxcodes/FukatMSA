@@ -1,0 +1,97 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter --quiet assemble --no-version-check --depfile C:\Users\Sarvesh\Documents\2025Projects\fukatMovies\fukat_movies\build\app\intermediates\flutter\debug/flutter_build.d --output C:\Users\Sarvesh\Documents\2025Projects\fukatMovies\fukat_movies\build\app\intermediates\flutter\debug -dTargetFile=C:\Users\Sarvesh\Documents\2025Projects\fukatMovies\fukat_movies\lib\main.dart -dTargetPlatform=android -dBuildMode=debug -dTrackWidgetCreation=true --DartDefines=RkxVVFRFUl9WRVJTSU9OPTMuNDEuNA==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049ZmYzN2JlZjYwMw==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049ZTRiOGRjYTNmMQ==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMS4x -dFlavor= -dAndroidArchs=android-x64 -dMinSdkVersion=24 debug_android_application
+
+## exception
+
+UnsupportedError: Unsupported operation: Illegal character in path: .env image asset can refer to one or more resolution-specific "variants", see
+
+```
+#0      _Uri._checkWindowsPathReservedCharacters (dart:core/uri.dart:2171:11)
+#1      _Uri._toWindowsFilePath (dart:core/uri.dart:3470:7)
+#2      _Uri.toFilePath (dart:core/uri.dart:3444:38)
+#3      ManifestAssetBundle._ensureAssetPathIsValid (package:flutter_tools/src/asset.dart:1342:32)
+#4      ManifestAssetBundle._resolveAsset (package:flutter_tools/src/asset.dart:1364:5)
+#5      ManifestAssetBundle._parseAssetFromFile (package:flutter_tools/src/asset.dart:1217:26)
+#6      ManifestAssetBundle._parseAssets (package:flutter_tools/src/asset.dart:1051:9)
+#7      ManifestAssetBundle.build (package:flutter_tools/src/asset.dart:384:54)
+<asynchronous suspension>
+#8      copyAssets (package:flutter_tools/src/build_system/targets/assets.dart:52:26)
+<asynchronous suspension>
+#9      AndroidAssetBundle.build (package:flutter_tools/src/build_system/targets/android.dart:75:34)
+<asynchronous suspension>
+#10     _BuildInstance._invokeInternal (package:flutter_tools/src/build_system/build_system.dart:937:9)
+<asynchronous suspension>
+#11     FlutterBuildSystem.build (package:flutter_tools/src/build_system/build_system.dart:684:16)
+<asynchronous suspension>
+#12     AssembleCommand.runCommand (package:flutter_tools/src/commands/assemble.dart:365:32)
+<asynchronous suspension>
+#13     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1590:27)
+<asynchronous suspension>
+#14     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#15     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+<asynchronous suspension>
+#16     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:496:9)
+<asynchronous suspension>
+#17     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#18     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:431:5)
+<asynchronous suspension>
+#19     FlutterCommandRunner.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:307:33)
+<asynchronous suspension>
+#20     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+<asynchronous suspension>
+#21     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#22     main (package:flutter_tools/executable.dart:103:3)
+<asynchronous suspension>
+```
+
+## flutter doctor
+
+```
+[✓] Flutter (Channel stable, 3.41.4, on Microsoft Windows [Version 10.0.26200.8524], locale en-IN) [473ms]
+    • Flutter version 3.41.4 on channel stable at D:\src\flutter
+    • Upstream repository https://github.com/flutter/flutter.git
+    • Framework revision ff37bef603 (3 months ago), 2026-03-03 16:03:22 -0800
+    • Engine revision e4b8dca3f1
+    • Dart version 3.11.1
+    • DevTools version 2.54.1
+    • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[✓] Windows Version (Windows 11 or higher, 25H2, 2009) [7.1s]
+
+[✓] Android toolchain - develop for Android devices (Android SDK version 36.1.0) [4.2s]
+    • Android SDK at C:\Users\Sarvesh\AppData\Local\Android\sdk
+    • Emulator version 36.2.12.0 (build_id 14214601) (CL:N/A)
+    • Platform android-36, build-tools 36.1.0
+    • Java binary at: D:\android\jbr\bin\java
+      This is the JDK bundled with the latest Android Studio installation on this machine.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    • Java version OpenJDK Runtime Environment (build 21.0.10+-14961533-b1163.108)
+    • All Android licenses accepted.
+
+[✓] Chrome - develop for the web [265ms]
+    • Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[✓] Visual Studio - develop Windows apps (Visual Studio Community 2026 Insiders [11811.120]) [263ms]
+    • Visual Studio at C:\Program Files\Microsoft Visual Studio\18\Insiders
+    • Visual Studio Community 2026 version 18.7.11811.120
+    • The current Visual Studio installation is a pre-release version. It may not be supported by Flutter yet.
+    • Windows 10 SDK version 10.0.26100.0
+
+[✓] Connected device (4 available) [480ms]
+    • sdk gphone64 x86 64 (mobile) • emulator-5554 • android-x64    • Android 16 (API 36) (emulator)
+    • Windows (desktop)            • windows       • windows-x64    • Microsoft Windows [Version 10.0.26200.8524]
+    • Chrome (web)                 • chrome        • web-javascript • Google Chrome 148.0.7778.181
+    • Edge (web)                   • edge          • web-javascript • Microsoft Edge 148.0.3967.83
+
+[✓] Network resources [972ms]
+    • All expected network resources are available.
+
+• No issues found!
+```
