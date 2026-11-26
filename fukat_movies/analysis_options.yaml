@@ -1,0 +1,25 @@
+# Analyzer + lint configuration.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+  errors:
+    package_names: ignore
+    # `package:flutter/material.dart` is flagged as deprecated in favour of
+    # `package:material_ui`, which requires Dart >=3.13. Flutter 3.50.1 stable
+    # ships Dart 3.12, so this cannot be actioned yet without breaking
+    # `flutter pub get` for everyone on the stable channel. Re-enable when the
+    # stable SDK catches up. It is a diagnostic, not a lint rule, hence here.
+    deprecated_member_use: ignore
+
+linter:
+  rules:
+    # avoid_print: false
+    # prefer_single_quotes: true

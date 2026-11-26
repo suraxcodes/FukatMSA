@@ -1,0 +1,15 @@
+.planning/
+node_modules/
+.env
+.DS_Store
+/assets/.env
+remote_config.json
+.gitignore
+build
+/streambert
+streambert
+provider-test
+fukat_movies/assets/remote_config.json
+key.txt
+importannode.txt
+working provider

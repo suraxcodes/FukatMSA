@@ -1,0 +1,1 @@
+﻿import 'package:http/http.dart' as http; void main() async { var res = await http.get(Uri.parse('https://vidlink.pro/api/video/movie/1083381'), headers: {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}); print(res.body); }
