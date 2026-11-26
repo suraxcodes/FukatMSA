@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Fukat MSA",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "env": {
+        "MIRURO_API_URL": "https://miruro-apimsa.onrender.com",
+        "KUUDERE_API_URL": "https://kuudere-apimsa.onrender.com",
+        "PROXIFY_STREAMS_URL": "https://proxify-streamsmsa.onrender.com"
+      },
+      "args": [
+        "--dart-define=MIRURO_API_URL=https://miruro-apimsa.onrender.com",
+        "--dart-define=KUUDERE_API_URL=https://kuudere-apimsa.onrender.com",
+        "--dart-define=PROXIFY_STREAMS_URL=https://proxify-streamsmsa.onrender.com"
+      ]
+    }
+  ]
+}

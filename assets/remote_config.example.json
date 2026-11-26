@@ -1,0 +1,36 @@
+{
+  "_comment": "Example provider list. Copy to assets/remote_config.json to use. Every entry is validated on load: unknown engines and non-https URLs are dropped (see lib/services/remote_config_service.dart).",
+  "version": 1,
+  "active_providers": [
+    {
+      "name": "Videasy",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://player.videasy.net/movie/",
+      "tv_url": "https://player.videasy.net/tv/"
+    },
+    {
+      "name": "2Embed",
+      "engine": "webview",
+      "id_type": "imdb",
+      "format_style": "query_mix",
+      "movie_url": "https://www.2embed.cc/embed/",
+      "tv_url": "https://www.2embed.cc/embedtv/"
+    },
+    {
+      "name": "NontonGo",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.nontongo.win/embed/movie/",
+      "tv_url": "https://www.nontongo.win/embed/tv/"
+    },
+    {
+      "name": "Extractor (generic)",
+      "engine": "native_extractor",
+      "movie_url": "https://player.videasy.net/movie/",
+      "tv_url": "https://player.videasy.net/tv/"
+    }
+  ]
+}

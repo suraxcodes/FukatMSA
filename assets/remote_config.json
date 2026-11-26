@@ -1,0 +1,111 @@
+{
+  "_comment": "Your provider list. Engines default to `webview` when omitted, so entries only need movie_url/tv_url. See docs/PROVIDERS.md.",
+  "active_providers": [
+    {
+      "name": "OMSS Super Aggregator",
+      "engine": "native_stremio",
+      "id_type": "tmdb",
+      "platforms": ["windows", "android", "ios", "linux", "macos"]
+    },
+    {
+      "name": "Server 1",
+      "engine": "webview",
+      "id_type": "imdb",
+      "format_style": "query",
+      "movie_url": "https://vidsrcme.ru/embed/movie?imdb=",
+      "tv_url": "https://vidsrcme.ru/embed/tv?imdb="
+    },
+    {
+      "name": "Server 2",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidsrc.fyi/embed/movie/",
+      "tv_url": "https://vidsrc.fyi/embed/tv/"
+    },
+    {
+      "name": "Server 3",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidnest.fun/movie/",
+      "tv_url": "https://vidnest.fun/tv/",
+      "anime_url": "https://vidnest.fun/anime/"
+    },
+    {
+      "name": "Server 4",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidlink.pro/movie/",
+      "tv_url": "https://vidlink.pro/tv/"
+    },
+    {
+      "name": "Server 5",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://111movies.net/movie/",
+      "tv_url": "https://111movies.net/tv/"
+    },
+    {
+      "name": "Server 6",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.vidfast.net/movie/",
+      "tv_url": "https://www.vidfast.net/tv/"
+    },
+    {
+      "name": "Server 7",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "dash",
+      "movie_url": "https://autoembed.co/movie/tmdb/",
+      "tv_url": "https://autoembed.co/tv/tmdb/"
+    },
+    {
+      "name": "Server 8",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://vidsrc.mov/embed/movie/",
+      "tv_url": "https://vidsrc.mov/embed/tv/"
+    },
+    {
+      "name": "Server 9",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://player.videasy.net/movie/",
+      "tv_url": "https://player.videasy.net/tv/"
+    },
+    {
+      "name": "Server 10",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "movie_url": "https://www.vidking.net/embed/movie/",
+      "tv_url": "https://www.vidking.net/embed/tv/"
+    },
+    {
+      "name": "AnimeFlix",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "anime_url": "https://animeflix.to/watch/",
+      "movie_url": "https://animeflix.to/movie/",
+      "tv_url": "https://animeflix.to/tv/"
+    },
+    {
+      "name": "AnimePahe",
+      "engine": "webview",
+      "id_type": "tmdb",
+      "format_style": "slash",
+      "anime_url": "https://animepahe.com/play/",
+      "movie_url": "https://animepahe.com/movie/",
+      "tv_url": "https://animepahe.com/tv/"
+    }
+  ],
+  "no_streams_text": "No working streams found. Please select another server."
+}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Playback sources in this space still serve some media over cleartext HTTP.
+  Rather than the old blanket usesCleartextTraffic="true" (which allowed
+  *anything*, including plaintext API calls for your keys), cleartext is
+  permitted only for media playback, and the app's own API hosts are pinned to
+  HTTPS.
+
+  Add a <domain> entry here if a specific CDN needs cleartext.
+-->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="false">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+
+  <!-- Media/CDN hosts that still lack TLS. -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">owocdn.top</domain>
+    <domain includeSubdomains="true">code29wave.site</domain>
+  </domain-config>
+
+  <!-- Our own API endpoints must never be downgraded. -->
+  <domain-config cleartextTrafficPermitted="false">
+    <domain includeSubdomains="true">themoviedb.org</domain>
+    <domain includeSubdomains="true">supabase.co</domain>
+    <domain includeSubdomains="true">anilist.co</domain>
+    <domain includeSubdomains="true">mangadex.org</domain>
+  </domain-config>
+</network-security-config>
